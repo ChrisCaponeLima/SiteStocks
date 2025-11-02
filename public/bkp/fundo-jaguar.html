@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fundo Jaguar Investimentos | Detalhes</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <style>
+        /* Estilos Específicos para a Página do Fundo */
+        .fund-header {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-bg-dark));
+            color: var(--color-text-light);
+            padding: 80px 0 40px;
+            text-align: center;
+        }
+
+        .fund-header h1 {
+            font-size: 3em;
+            margin-bottom: 15px;
+            color: var(--color-secondary);
+        }
+
+        .fund-header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .fund-details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        .detail-card {
+            background-color: var(--color-primary);
+            padding: 20px;
+            border-radius: var(--border-radius-card);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .detail-card strong {
+            display: block;
+            font-size: 0.9em;
+            color: var(--color-secondary);
+            margin-bottom: 5px;
+        }
+
+        .detail-card span {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--color-text-light);
+        }
+
+        .fund-section {
+            padding: var(--spacing-section-mobile);
+            background-color: var(--color-bg-light);
+        }
+
+        .fund-section.dark {
+            background-color: #f0f8ff;
+        }
+
+        .fund-section h2 {
+            text-align: center;
+            font-size: 2em;
+            color: var(--color-primary);
+            margin-bottom: 30px;
+            position: relative;
+            padding-bottom: 10px;
+        }
+        .fund-section h2::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 3px;
+            background-color: var(--color-secondary);
+            border-radius: 2px;
+        }
+
+        .fund-info-text {
+            font-size: 1.1em;
+            line-height: 1.8;
+            max-width: 800px;
+            margin: 0 auto 40px;
+            text-align: center;
+            color: #555;
+        }
+
+        /* Estilo para Tabelas */
+        .data-table-wrapper {
+            overflow-x: auto; /* Para tabelas grandes em mobile */
+            margin-bottom: 40px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.95em;
+            background-color: #ffffff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border-radius: var(--border-radius-card);
+            overflow: hidden; /* Para bordas arredondadas */
+        }
+
+        .data-table th, .data-table td {
+            padding: 15px;
+            border-bottom: 1px solid var(--color-border);
+            text-align: left;
+            white-space: nowrap; /* Evita quebra de linha em células pequenas */
+        }
+
+        .data-table th {
+            background-color: var(--color-primary);
+            color: var(--color-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .data-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .data-table tr:hover {
+            background-color: #f0f8ff;
+        }
+
+        .data-table td.numeric {
+            text-align: right;
+            font-family: monospace; /* Para números */
+        }
+
+        .data-table .buy { color: #28a745; font-weight: bold; } /* Verde para compra */
+        .data-table .sell { color: #dc3545; font-weight: bold; } /* Vermelho para venda */
+        .data-table .positive { color: #28a745; font-weight: bold; }
+        .data-table .negative { color: #dc3545; font-weight: bold; }
+
+        /* Estilos para gráficos (placeholders) */
+        .chart-placeholder {
+            background-color: #f0f0f0;
+            border-radius: var(--border-radius-card);
+            min-height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #999;
+            font-size: 1.2em;
+            margin-bottom: 40px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        @media (min-width: 768px) {
+            .fund-header h1 {
+                font-size: 4em;
+            }
+            .fund-details-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="fund-header">
+        <div class="container">
+            <h1>Jaguar Investimentos</h1>
+            <p>Seu capital impulsionado pelo potencial do mercado de ações.</p>
+            <div class="fund-details-grid">
+                <div class="detail-card">
+                    <strong>Data de Constituição</strong>
+                    <span>02/01/2025</span>
+                </div>
+                <div class="detail-card">
+                    <strong>Cotas Emitidas</strong>
+                    <span>20</span>
+                </div>
+                <div class="detail-card">
+                    <strong>Total de Ativos</strong>
+                    <span>6</span>
+                </div>
+                <div class="detail-card">
+                    <strong>Posição Atual</strong>
+                    <span>R$ 8.865,35</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="fund-section">
+        <div class="container">
+            <h2>Sobre o Fundo Jaguar Investimentos</h2>
+            <p class="fund-info-text">O Fundo Jaguar Investimentos foi constituído para oferecer aos investidores uma forma eficiente e diversificada de participar do mercado de ações brasileiro. Gerido por uma equipe de especialistas, buscamos as melhores oportunidades para maximizar o retorno dos nossos cotistas, com foco em empresas de alto potencial de crescimento e sólidos fundamentos.</p>
+            <p class="fund-info-text">Nossa estratégia combina análise fundamentalista e técnica, priorizando a segurança e a transparência em todas as operações. Venha fazer parte do nosso sucesso!</p>
+        </div>
+    </section>
+
+    <section class="fund-section dark">
+        <div class="container">
+            <h2>Ativos Atuais do Fundo</h2>
+            <div class="data-table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Ativo</th>
+                            <th>Descrição</th>
+                            <th>Tipo</th>
+                            <th>Data</th>
+                            <th>Quantidade</th>
+                            <th>Preço Unit. Mov.</th>
+                            <th>Valor Movimentado</th>
+                            <th>Preço Unit. Atual</th>
+                            <th>Valor Atualizado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>MXRF11</td>
+                            <td>MAXI RENDA FII ETF (BVMF:MXRF11)</td>
+                            <td class="buy">C</td>
+                            <td>20/08/2024</td>
+                            <td class="numeric">2000</td>
+                            <td class="numeric">10,04</td>
+                            <td class="numeric">20.080,00</td>
+                            <td class="numeric">10,04</td>
+                            <td class="numeric">20.080,00</td>
+                        </tr>
+                        <tr>
+                            <td>ITSA3</td>
+                            <td>ITAUSA S.A. (BVMF:ITSA3)</td>
+                            <td class="buy">C</td>
+                            <td>20/08/2024</td>
+                            <td class="numeric">2000</td>
+                            <td class="numeric">10,64</td>
+                            <td class="numeric">21.280,00</td>
+                            <td class="numeric">11,02</td>
+                            <td class="numeric">22.040,00</td>
+                        </tr>
+                        <tr>
+                            <td>BBAS3</td>
+                            <td>Banco do Brasil S.A. (BVMF:BBAS3)</td>
+                            <td class="buy">C</td>
+                            <td>20/08/2024</td>
+                            <td class="numeric">100</td>
+                            <td class="numeric">31,99</td>
+                            <td class="numeric">3.199,00</td>
+                            <td class="numeric">29,13</td>
+                            <td class="numeric">2.913,00</td>
+                        </tr>
+                        <tr>
+                            <td>BRAP4</td>
+                            <td>Bradespar S.A (BVMF:BRAP4)</td>
+                            <td class="buy">C</td>
+                            <td>20/08/2024</td>
+                            <td class="numeric">200</td>
+                            <td class="numeric">45,30</td>
+                            <td class="numeric">9.060,00</td>
+                            <td class="numeric">19,08</td>
+                            <td class="numeric">3.816,00</td>
+                        </tr>
+                        <tr>
+                            <td>CPLE6</td>
+                            <td>Companhia Paranaense de Energia - Copel (BVMF:CPLE6)</td>
+                            <td class="buy">C</td>
+                            <td>20/08/2024</td>
+                            <td class="numeric">55</td>
+                            <td class="numeric">65,01</td>
+                            <td class="numeric">3.575,55</td>
+                            <td class="numeric">10,65</td>
+                            <td class="numeric">585,75</td>
+                        </tr>
+                        <tr>
+                            <td>MYPK3</td>
+                            <td>IOCHPE-MAXION S.A. (BVMF:MYPK3)</td>
+                            <td class="buy">C</td>
+                            <td>20/08/2024</td>
+                            <td class="numeric">300</td>
+                            <td class="numeric">13,10</td>
+                            <td class="numeric">3.930,00</td>
+                            <td class="numeric">11,62</td>
+                            <td class="numeric">3.486,00</td>
+                        </tr>
+                         <tr>
+                            <td>ITSA3</td>
+                            <td>ITAUSA S.A. (BVMF:ITSA3)</td>
+                            <td class="sell">V</td>
+                            <td>20/08/2024</td>
+                            <td class="numeric">500</td>
+                            <td class="numeric">12,50</td>
+                            <td class="numeric">6.250,00</td>
+                            <td class="numeric">10,94</td>
+                            <td class="numeric">5.470,00</td>
+                        </tr>
+                        <tr>
+                            <td>MYPK3</td>
+                            <td>IOCHPE-MAXION S.A. (BVMF:MYPK3)</td>
+                            <td class="buy">C</td>
+                            <td>20/08/2024</td>
+                            <td class="numeric">90</td>
+                            <td class="numeric">2,30</td>
+                            <td class="numeric">207,00</td>
+                            <td class="numeric">11,62</td>
+                            <td class="numeric">1.045,80</td>
+                        </tr>
+                        <tr>
+                            <td>BBAS3</td>
+                            <td>Banco do Brasil S.A. (BVMF:BBAS3)</td>
+                            <td class="buy">C</td>
+                            <td>20/08/2024</td>
+                            <td class="numeric">90</td>
+                            <td class="numeric">45,00</td>
+                            <td class="numeric">4.050,00</td>
+                            <td class="numeric">29,13</td>
+                            <td class="numeric">2.621,70</td>
+                        </tr>
+                        <tr>
+                            <td>MXRF11</td>
+                            <td>MAXI RENDA FII ETF (BVMF:MXRF11)</td>
+                            <td class="buy">C</td>
+                            <td>21/08/2024</td>
+                            <td class="numeric">500</td>
+                            <td class="numeric">9,00</td>
+                            <td class="numeric">4.500,00</td>
+                            <td class="numeric">10,04</td>
+                            <td class="numeric">5.020,00</td>
+                        </tr>
+                        <tr>
+                            <td>MXRF11</td>
+                            <td>MAXI RENDA FII ETF (BVMF:MXRF11)</td>
+                            <td class="sell">V</td>
+                            <td>21/08/2024</td>
+                            <td class="numeric">500</td>
+                            <td class="numeric">10,50</td>
+                            <td class="numeric">5.250,00</td>
+                            <td class="numeric">10,04</td>
+                            <td class="numeric">5.020,00</td>
+                        </tr>
+                        <tr>
+                            <td>ITSA3</td>
+                            <td>ITAUSA S.A. (BVMF:ITSA3)</td>
+                            <td class="sell">V</td>
+                            <td>26/08/2024</td>
+                            <td class="numeric">500</td>
+                            <td class="numeric">13,50</td>
+                            <td class="numeric">6.750,00</td>
+                            <td class="numeric">10,94</td>
+                            <td class="numeric">5.470,00</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="fund-info-text">Os dados acima são para fins ilustrativos e não representam uma carteira de investimento real. A performance passada não garante rendimentos futuros.</p>
+        </div>
+    </section>
+
+    <section class="fund-section">
+        <div class="container">
+            <h2>Nossos Cotistas</h2>
+            <div class="data-table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Data</th>
+                            <th>Capital Inicial</th>
+                            <th>Plano</th>
+                            <th>Cotas</th>
+                            <th>Participação %</th>
+                            <th>Rentabilidade %</th>
+                            <th>Posição Atual</th>
+                            <th>Forecast %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Zé</td>
+                            <td>08/10/2024</td>
+                            <td class="numeric">50.000,00</td>
+                            <td>1</td>
+                            <td class="numeric">36,22</td>
+                            <td class="numeric">36,22</td>
+                            <td class="numeric positive">2,21</td>
+                            <td class="numeric">51.102,60</td>
+                            <td class="numeric">26,46</td>
+                        </tr>
+                        <tr>
+                            <td>Rafael</td>
+                            <td>14/10/2024</td>
+                            <td class="numeric">10.000,00</td>
+                            <td>1</td>
+                            <td class="numeric">7,24</td>
+                            <td class="numeric">7,24</td>
+                            <td class="numeric positive">2,21</td>
+                            <td class="numeric">10.220,52</td>
+                            <td class="numeric">26,46</td>
+                        </tr>
+                        <tr>
+                            <td>Jaguar</td>
+                            <td>15/10/2024</td>
+                            <td class="numeric">20.000,00</td>
+                            <td>1</td>
+                            <td class="numeric">14,49</td>
+                            <td class="numeric">14,49</td>
+                            <td class="numeric positive">2,21</td>
+                            <td class="numeric">20.441,04</td>
+                            <td class="numeric">26,46</td>
+                        </tr>
+                        <tr>
+                            <td>Juliana</td>
+                            <td>15/10/2024</td>
+                            <td class="numeric">5.000,00</td>
+                            <td>1</td>
+                            <td class="numeric">3,62</td>
+                            <td class="numeric">3,62</td>
+                            <td class="numeric positive">2,21</td>
+                            <td class="numeric">5.110,26</td>
+                            <td class="numeric">26,46</td>
+                        </tr>
+                        <tr>
+                            <td>Alyne</td>
+                            <td>15/10/2024</td>
+                            <td class="numeric">50.000,00</td>
+                            <td>1</td>
+                            <td class="numeric">36,22</td>
+                            <td class="numeric">36,22</td>
+                            <td class="numeric positive">2,21</td>
+                            <td class="numeric">51.102,60</td>
+                            <td class="numeric">26,46</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section class="fund-section dark">
+        <div class="container">
+            <h2>Rentabilidade do Fundo</h2>
+            <p class="fund-info-text">Acompanhe a performance detalhada do Fundo Jaguar Investimentos e veja o impacto das operações nos seus rendimentos.</p>
+            
+            <h3>Rendimentos Intraday</h3>
+            <div class="data-table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Capital Alocado</th>
+                            <th>Lucro Bruto</th>
+                            <th>Impostos</th>
+                            <th>Taxa Adm</th>
+                            <th>Lucro Líquido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>15/10/2024</td>
+                            <td class="numeric">27.000,00</td>
+                            <td class="numeric">600,00</td>
+                            <td class="numeric">120</td>
+                            <td class="numeric">384,00</td>
+                            <td class="numeric">96,00</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>Rendimentos em Ações</h3>
+            <div class="data-table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Capital Alocado</th>
+                            <th>Lucro Bruto</th>
+                            <th>Impostos</th>
+                            <th>Taxa Adm</th>
+                            <th>Lucro Líquido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>15/10/2024</td>
+                            <td class="numeric">108.000,00</td>
+                            <td class="numeric">3.240,00</td>
+                            <td class="numeric">875</td>
+                            <td class="numeric">473,04</td>
+                            <td class="numeric">1.892,16</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-col logo-col">
+                    <img src="images/logo_ts_white.png" alt="Jaguar Investimentos Logo" class="footer-logo">
+                    <p>Seu parceiro no mercado de ações.</p>
+                </div>
+                <div class="footer-col">
+                    <h4>Links Úteis</h4>
+                    <ul>
+                        <li><a href="index.html">Página Principal</a></li>
+                        <li><a href="area-investidor.html">Área do Investidor</a></li>
+                        <li><a href="#">Blog</a></li>
+                        <li><a href="#">Contato</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Legal</h4>
+                    <ul>
+                        <li><a href="#">Termos de Uso</a></li>
+                        <li><a href="#">Política de Privacidade</a></li>
+                        <li><a href="#">Aviso de Riscos</a></li>
+                        <li><a href="#">FAQ</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col contact-col">
+                    <h4>Contato</h4>
+                    <p><i class="fas fa-envelope"></i> contato@jaguarempresa.com</p>
+                    <p><i class="fas fa-phone-alt"></i> (XX) XXXX-XXXX</p>
+                    <div class="social-icons">
+                        <a href="#" aria-label="LinkedIn"><i class="fab fa-linkedin"></i></a>
+                        <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                        <a href="#" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Jaguar Investimentos. Todos os direitos reservados. Regulado pelo Banco Central do Brasil e CVM.</p>
+                <div class="security-seals">
+                    <img src="images/selo-banco-central.webp" alt="Selo Banco Central" title="Regulado pelo Banco Central do Brasil">
+                    <img src="images/selo-cvm.webp" alt="Selo CVM" title="Regulado pela CVM">
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

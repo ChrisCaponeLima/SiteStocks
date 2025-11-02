@@ -1,0 +1,34 @@
+{
+  "name": "SiteStocks",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    
+    "seed": "tsx --env-file=.env prisma/seed.ts",
+    
+    "db:pull": "node -r dotenv/config node_modules/prisma/build/index.js db pull",
+    "db:generate": "node -r dotenv/config node_modules/prisma/build/index.js generate",
+    "db:migrate": "node -r dotenv/config node_modules/prisma/build/index.js migrate dev",
+    "db:reset": "node -r dotenv/config node_modules/prisma/build/index.js migrate reset --force"
+  },
+  "dependencies": {
+    "@nuxtjs/tailwindcss": "^6.14.0",
+    "@prisma/client": "^6.18.0",
+    "chart.js": "^4.5.1",
+    "nuxt": "^4.2.0",
+    "vue": "^3.5.22",
+    "vue-chartjs": "^5.3.2",
+    "vue-router": "^4.6.3"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "dotenv": "^17.2.3",
+    "prisma": "^6.18.0",
+    "tsx": "^4.20.6"
+  }
+}

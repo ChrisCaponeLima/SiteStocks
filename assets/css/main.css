@@ -1,0 +1,60 @@
+/* /assets/css/main.css - V1.2 - Inclusão de estilos globais e customizados do Header/Footer */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS global para o layout e o corpo (body) */
+body {
+    margin: 0;
+    font-family: 'Poppins', sans-serif;
+    color: #333;
+    background-color: #f4f7f6;
+}
+
+/* Estilos de Componentes de Layout (PROCESSADOS PELO TAILWIND) */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Estilos básicos para o Header */
+.header {
+    @apply bg-white shadow-md;
+}
+.nav-link {
+    @apply text-primary hover:text-secondary font-medium transition duration-200;
+}
+.btn-secondary-sm {
+    @apply bg-secondary text-primary px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition duration-200;
+}
+
+/* Estilos básicos para o Footer */
+.footer {
+    @apply bg-bg-dark text-white pt-10 pb-6;
+}
+.footer-content {
+    @apply grid grid-cols-2 md:grid-cols-4 gap-8 mb-8;
+}
+.footer-col h4 {
+    @apply text-lg font-bold mb-4 text-secondary;
+}
+.footer-col p, .footer-col li, .footer-col a {
+    @apply text-sm text-gray-300;
+}
+.footer-col li {
+    @apply mb-2;
+}
+.footer-bottom {
+    @apply border-t border-gray-700 pt-4 text-center md:flex justify-between items-center;
+}
+.security-seals {
+    @apply flex justify-center md:justify-end gap-3 mt-4 md:mt-0;
+}
+.security-seals img {
+    @apply h-8;
+}
+.social-icons a {
+    @apply text-xl mr-3 hover:text-secondary transition duration-200;
+}
