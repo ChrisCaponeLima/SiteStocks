@@ -1,12 +1,11 @@
-// /layouts/default.vue - V1.3 - Layout Limpo
+// /layouts/default.vue - V1.4
 <template>
   <div>
-   <slot />
+    <AppHeader />
+    <slot />
   </div>
- </template>
- 
- <script setup>
- // Removido: import { useAuthStore }
- // Removido: const authStore = useAuthStore();
- // Removido: if (!authStore.initialized) { authStore.init(); }
- </script>
+</template>
+
+<script setup>
+// ... (Lógica da Store de Autenticação)
+</script>

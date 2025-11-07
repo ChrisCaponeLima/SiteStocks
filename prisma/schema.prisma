@@ -7,86 +7,98 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// =================================================================
-// 1. Modelo User (Acesso e Dados Pessoais)
-// =================================================================
+model RoleLevel {
+  id    Int    @id @default(autoincrement())
+  name  String @unique @db.VarChar(50)
+  level Int    @unique
+  users User[]
+}
+
 model User {
-  id          Int     @id @default(autoincrement())
-
-  // Campos de Acesso (Login: CPF e Senha)
-  cpf         String  @unique @db.VarChar(14) // CPF usado como identificador de login
-  password    String  // HASH da senha (NUNCA a senha pura)
-
-  // Campos Pessoais
-  nome        String  @db.VarChar(100)
-  sobrenome   String  @db.VarChar(100)
-  telefone    String? @db.VarChar(15)
-  email       String  @unique @db.VarChar(100)
-
-  // Relacionamento 1:1 com a conta de Cotista
-  cotistaId   Int     @unique
-  cotista     Cotista @relation(fields: [cotistaId], references: [id])
+  id                  Int                   @id @default(autoincrement())
+  cpf                 String                @unique @db.VarChar(14)
+  password            String
+  nome                String                @db.VarChar(100)
+  sobrenome           String                @db.VarChar(100)
+  telefone            String?               @db.VarChar(15)
+  email               String                @unique @db.VarChar(100)
+  cotistaId           Int                   @unique
+  roleId              Int                   @default(1)
+  ultimoAcesso        DateTime?
+  DepositoPixPendente DepositoPixPendente[]
+  cotista             Cotista               @relation(fields: [cotistaId], references: [id])
+  role                RoleLevel             @relation(fields: [roleId], references: [id])
 }
 
-// =================================================================
-// 2. Modelo Cotista (Dados de Negócio e Financeiros)
-// =================================================================
 model Cotista {
-  id              Int       @id @default(autoincrement())
-  
-  // Campos Pessoais REMOVIDOS (nome, cpfCnpj, email)
-  
-  // Dado de Negócio
-  numeroDaConta   String    @unique @db.VarChar(20) // Campo adicionado para dado de negócio
-  
-  dataCriacao     DateTime  @default(now())
-  fundoId         Int?
-  capitalInicial  Decimal   @db.Decimal(18, 2)
-  aporteMensalPadrao Decimal @default(0) @db.Decimal(18, 2)
-  fundo           Fundo?    @relation(fields: [fundoId], references: [id], onDelete: Restrict)
-  movimentacoes   MovimentacaoCotista[]
-  
-  // Link de volta para a tabela User (Relação 1:1)
-  user            User?
+  id                  Int                   @id @default(autoincrement())
+  dataCriacao         DateTime              @default(now())
+  fundoId             Int?
+  capitalInicial      Decimal               @db.Decimal(18, 2)
+  aporteMensalPadrao  Decimal               @default(0) @db.Decimal(18, 2)
+  numeroDaConta       String                @unique @db.VarChar(20)
+  fundo               Fundo?                @relation(fields: [fundoId], references: [id], onDelete: Restrict)
+  DepositoPixPendente DepositoPixPendente[]
+  movimentacoes       MovimentacaoCotista[]
+  user                User?
 }
 
-// =================================================================
-// Modelos Existentes (Inclusos para referência)
-// =================================================================
 model Fundo {
-  id                     Int       @id @default(autoincrement())
-  nome                   String    @db.VarChar(100)
-  cnpj                   String    @unique @db.VarChar(18)
-  taxaAdm                Float     @default(0.0)
-  dataInicio             DateTime  @db.Date
+  id                     Int                   @id @default(autoincrement())
+  nome                   String                @db.VarChar(100)
+  cnpj                   String                @unique @db.VarChar(18)
+  taxaAdm                Decimal               @default(0.0) @db.Decimal(4, 4)
+  dataInicio             DateTime              @db.Date
   cotistas               Cotista[]
   historicoRentabilidade RentabilidadeMensal[]
 }
 
 model RentabilidadeMensal {
-  id            Int       @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   fundoId       Int
-  mesAno        DateTime  @db.Date
-  valorFundo    Decimal   @db.Decimal(18, 2)
-  valorPoupanca Decimal   @db.Decimal(18, 2)
-  rendimentoMes Float     @db.Real
-  fundo         Fundo     @relation(fields: [fundoId], references: [id])
+  mesAno        DateTime @db.Date
+  valorFundo    Decimal  @db.Decimal(18, 2)
+  valorPoupanca Decimal  @db.Decimal(18, 2)
+  rendimentoMes Decimal  @db.Decimal(18, 8)
+  fundo         Fundo    @relation(fields: [fundoId], references: [id])
 
   @@unique([fundoId, mesAno])
 }
 
 model MovimentacaoCotista {
-  id               Int                @id @default(autoincrement())
+  id               Int              @id @default(autoincrement())
   cotistaId        Int
-  dataMovimentacao DateTime           @db.Date
+  dataMovimentacao DateTime         @db.Date
   tipo             TipoMovimentacao
-  valor            Decimal            @db.Decimal(18, 2)
-  cotista          Cotista            @relation(fields: [cotistaId], references: [id])
+  valor            Decimal          @db.Decimal(18, 2)
+  cotista          Cotista          @relation(fields: [cotistaId], references: [id])
 
   @@index([cotistaId, dataMovimentacao])
+}
+
+model DepositoPixPendente {
+  id              Int            @id @default(autoincrement())
+  cotistaId       Int
+  valorSolicitado Decimal        @db.Decimal(18, 2)
+  dataSolicitacao DateTime       @default(now())
+  status          StatusDeposito @default(PENDENTE)
+  gerenteId       Int?
+  dataValidacao   DateTime?
+  pixPayload      String         @db.VarChar(400)
+  Cotista         Cotista        @relation(fields: [cotistaId], references: [id])
+  User            User?          @relation(fields: [gerenteId], references: [id])
+
+  @@index([cotistaId, status])
 }
 
 enum TipoMovimentacao {
   APORTE
   RESGATE
+  RENDIMENTO
+}
+
+enum StatusDeposito {
+  PENDENTE
+  APROVADO
+  REJEITADO
 }
