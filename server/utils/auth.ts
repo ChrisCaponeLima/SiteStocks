@@ -1,14 +1,14 @@
-// /server/utils/auth.ts - V2.0 - Padronização do AuthPayload para roleLevel (numérico)
+// /server/utils/auth.ts - V2.1 - Adicionado utilitário de autorização para cotistas
 import jwt from 'jsonwebtoken';
 import { H3Event, createError, getHeader } from 'h3'; 
 import bcrypt from 'bcryptjs';
+import { ACCESS_LEVEL } from './constants'; // Importar ACCESS_LEVEL
 
 // Tipo de payload JWT
-interface AuthPayload {
+export interface AuthPayload { // Exportar para uso em outros arquivos
   userId: number;
-  // 🚨 CORREÇÃO: Padronizado para 'roleLevel' conforme o restante do sistema (numérico)
   roleLevel: number; 
-  cotistaId: number | null; // Adicionamos o cotistaId para uso no payload
+  cotistaId: number | null; 
 }
 
 // Chave secreta e configurações
@@ -43,6 +43,10 @@ export const verifyToken = (token: string): AuthPayload => {
     const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
     return payload;
   } catch (e) {
+    // Log detalhado apenas em ambiente de desenvolvimento para evitar vazar informações
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Erro de verificação de token:', e);
+    }
     throw createError({ statusCode: 401, statusMessage: 'Token inválido ou expirado.' });
   }
 };
@@ -58,23 +62,35 @@ export const signToken = (payload: AuthPayload): string => {
   );
 };
 
-// --- WRAPPER DE AUTENTICAÇÃO H3 ---
+// --- WRAPPER DE AUTENTICAÇÃO E AUTORIZAÇÃO H3 ---
 
 /**
- * Verifica o token JWT no cabeçalho 'Authorization' de um evento H3.
- * É a função de alto nível que as rotas de API devem usar.
+ * Verifica o token JWT no cabeçalho 'Authorization' de um evento H3
+ * e valida a autorização para um cotista específico.
+ * É a função de alto nível que as rotas de API devem usar para acesso a dados de cotista.
  * @param event O evento H3 da requisição.
- * @returns O payload decodificado.
+ * @param requestedCotistaId O ID do cotista que está sendo solicitado na rota.
+ * @returns O payload decodificado se a autenticação e autorização forem bem-sucedidas.
  * @throws 401 Unauthorized se o token for inválido ou ausente.
+ * @throws 403 Forbidden se o usuário não tiver permissão para acessar os dados do cotista solicitado.
  */
-export const verifyAuthToken = (event: H3Event): AuthPayload => {
-    // 1. Obter o token do cabeçalho Authorization
+export const authorizeCotista = (event: H3Event, requestedCotistaId: number): AuthPayload => {
+    // 1. Obter o token e verificar (reutiliza verifyToken)
     const token = getHeader(event, 'Authorization')?.replace('Bearer ', '');
-
     if (!token) {
         throw createError({ statusCode: 401, statusMessage: 'Token de autenticação ausente. Acesso negado.' });
     }
-    
-    // 2. Chama a função de baixo nível para verificação
-    return verifyToken(token); 
+    const payload = verifyToken(token); // Esta função já lança 401 se o token for inválido
+
+    // 2. Lógica de Autorização
+    // REQUISITO CRÍTICO DE SEGURANÇA: O cotista só pode acessar SEUS PRÓPRIOS dados (a menos que seja Admin)
+    if (
+        payload.roleLevel < ACCESS_LEVEL.ADMIN && 
+        payload.cotistaId !== requestedCotistaId
+    ) { 
+        console.warn(`Tentativa de acesso não autorizado ao cotista ${requestedCotistaId} pelo userId ${payload.userId} (cotistaId no token: ${payload.cotistaId}).`);
+        throw createError({ statusCode: 403, statusMessage: 'Acesso Proibido. Você só pode acessar seus próprios dados de cotista.' });
+    }
+
+    return payload;
 };

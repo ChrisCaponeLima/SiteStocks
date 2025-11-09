@@ -1,40 +1,47 @@
 {
-  "name": "SiteStocks",
+  "name": "nuxt-app",
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "nuxt build",
+    "build": "npx prisma generate && nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare",
-    "seed": "tsx --env-file=.env prisma/seed.ts",
-    "db:pull": "node -r dotenv/config node_modules/prisma/build/index.js db pull",
-    "db:generate": "node -r dotenv/config node_modules/prisma/build/index.js generate",
-    "db:migrate": "node -r dotenv/config node_modules/prisma/build/index.js migrate dev",
-    "db:reset": "node -r dotenv/config node_modules/prisma/build/index.js migrate reset --force"
+    "postinstall": "npx prisma generate && nuxt prepare",
+    "book": "node concat.js"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.1.0",
     "@nuxtjs/tailwindcss": "^6.14.0",
-    "@pinia/nuxt": "^0.11.3",
-    "@prisma/client": "^6.18.0",
-    "bcryptjs": "^3.0.3",
+    "@pinia/nuxt": "^0.11.2",
+    "@prisma/client": "^6.17.1",
+    "@vueuse/core": "^13.9.0",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.2",
+    "busboy": "^1.6.0",
     "chart.js": "^4.5.1",
+    "cloudinary": "^2.7.0",
     "decimal.js": "^10.6.0",
+    "jimp": "^1.6.0",
     "jsonwebtoken": "^9.0.2",
-    "nuxt": "^4.2.0",
+    "jwt-decode": "^4.0.0",
+    "nitropack": "^2.9.7",
+    "nuxt": "^4.1.0",
     "nuxt-qrcode": "^0.4.8",
     "pinia": "^3.0.3",
-    "pinia-plugin-persistedstate": "^4.7.1",
-    "vue": "^3.5.22",
-    "vue-chartjs": "^5.3.2",
-    "vue-router": "^4.6.3"
+    "pinia-plugin-persistedstate": "^4.5.0",
+    "sharp": "^0.34.4",
+    "tesseract.js": "^6.0.1",
+    "tesseract.js-node": "^0.1.0",
+    "uuid": "^13.0.0",
+    "vue": "^3.5.21",
+    "vue-chartjs": "^5.3.3",
+    "vue-router": "^4.5.1"
   },
   "devDependencies": {
-    "cross-env": "^10.1.0",
-    "dotenv": "^17.2.3",
-    "dotenv-cli": "^11.0.0",
-    "prisma": "^6.18.0",
-    "tsx": "^4.20.6"
+    "@types/node": "^24.5.2",
+    "prisma": "^6.17.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
   }
 }

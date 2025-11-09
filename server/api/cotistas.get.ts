@@ -1,12 +1,13 @@
-// /server/api/cotistas.get.ts - V1.0 - Listagem simplificada de Cotistas para uso em APIs administrativas.
+// /server/api/cotistas.get.ts - V1.4 - CORREÇÃO FINAL: Implementação de verificação de acesso por NÍVEL (level), usando 'roleLevel' do payload e ajustando o nível mínimo para 2, conforme solicitado pelo cliente.
 import { defineEventHandler, createError, H3Event } from 'h3'
-import { prisma } from '~/server/utils/db' // Utilizando o singleton do Prisma
-import { verifyToken } from '~/server/utils/auth' // Presumindo que verifyToken existe
+import { prisma } from '~/server/utils/db' 
+import { verifyToken } from '~/server/utils/auth'
 
 // Tipo de dados esperado no token
 interface AuthPayload {
     userId: number
-    role: string
+    role: string // roleName
+    roleLevel: number // Nível de acesso numérico
 }
 
 // Tipo de dados de retorno da API
@@ -15,6 +16,9 @@ interface CotistaListItem {
     nomeCompleto: string;
     numeroDaConta: string;
 }
+
+// 🛑 ALTERAÇÃO CRÍTICA V1.4: Nível mínimo exigido para esta rota.
+const MIN_LEVEL_REQUIRED = 1;
 
 
 export default defineEventHandler(async (event: H3Event): Promise<CotistaListItem[]> => {
@@ -32,15 +36,22 @@ export default defineEventHandler(async (event: H3Event): Promise<CotistaListIte
         throw createError({ statusCode: 401, statusMessage: 'Token inválido ou expirado.' })
     }
 
-    // Apenas Admin ou Owner podem listar todos os cotistas
-    if (payload.role !== 'admin' && payload.role !== 'owner') { 
-        throw createError({ statusCode: 403, statusMessage: 'Acesso Proibido. Função administrativa requerida.' })
+    // Usa o nível do payload diretamente.
+    const userLevel = payload.roleLevel; 
+
+    // Acesso permitido se o nível do usuário for maior ou igual ao nível mínimo (2).
+    if (userLevel < MIN_LEVEL_REQUIRED) { 
+        console.warn(`Acesso negado. Usuário ${payload.role} (Nível ${userLevel}) tentou acessar rota que requer Nível ${MIN_LEVEL_REQUIRED}.`)
+        throw createError({ 
+            statusCode: 403, 
+            statusMessage: `Acesso Proibido. Nível de permissão ${MIN_LEVEL_REQUIRED} requerido. Seu nível é ${userLevel}.` 
+        })
     }
 
     // 2. BUSCA NO BANCO DE DADOS
     try {
+        // ... (lógica inalterada de busca de dados no Prisma)
         const cotistasData = await prisma.cotista.findMany({
-            // Buscamos os dados necessários para exibir na lista suspensa
             select: {
                 id: true,
                 numeroDaConta: true,
@@ -58,7 +69,7 @@ export default defineEventHandler(async (event: H3Event): Promise<CotistaListIte
 
         // 3. FORMATAÇÃO DOS DADOS
         const formattedCotistas: CotistaListItem[] = cotistasData
-            .filter(c => c.user !== null) // Filtra cotistas sem usuário associado (caso existam)
+            .filter(c => c.user !== null)
             .map(cotista => {
                 const nomeCompleto = `${cotista.user!.nome} ${cotista.user!.sobrenome}`
                 

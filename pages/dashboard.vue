@@ -7,7 +7,7 @@
       </div>
       <div class="welcome-info">
         <i class="fas fa-user-circle"></i>
-        <span>Olá, Zé! Bem-vindo(a) à sua área.</span>
+        <span>Olá, John Doe! Bem-vindo(a) à sua área.</span>
       </div>
       <div class="user-actions">
         <NuxtLink to="#"><i class="fas fa-cog"></i> Configurações</NuxtLink>

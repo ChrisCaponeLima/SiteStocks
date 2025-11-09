@@ -1,6 +1,14 @@
-// /pages/extrato.vue - V1.0 - Componente de Extrato Financeiro para o cotista logado
+// /pages/extrato.vue - V1.2 - CORREÇÃO: Utiliza o middleware 'auth-user' (Nível 0) e token real da Store para a API.
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+// 🛑 IMPORTADO: Importa a Store de autenticação
+import { useAuthStore } from '~/stores/auth' 
+
+// 🛑 CORREÇÃO DE ROTA: Define o uso do middleware 'auth-user' (Nível 0)
+// Estava: definePageMeta({ middleware: ['auth'] })
+definePageMeta({
+    middleware: ['auth-user'] 
+})
 
 useHead({
   title: 'Meu Extrato Financeiro',
@@ -47,18 +55,30 @@ const fetchExtrato = async () => {
     message.value = ''
     movimentacoes.value = []
 
+    // 🛑 CORREÇÃO DE TOKEN: Obtém o token real da Pinia Store
+    const authStore = useAuthStore();
+    const token = authStore.token;
+
+    if (!token) {
+        isLoading.value = false;
+        isError.value = true;
+        message.value = 'ERRO: Token de autenticação não encontrado. Tente logar novamente.';
+        return;
+    }
+
     const query: { startDate?: string, endDate?: string } = {};
 
     if (startDate.value) query.startDate = startDate.value;
     if (endDate.value) query.endDate = endDate.value;
 
     try {
+        // 🛑 CORREÇÃO DE HEADER: Envia o token real
         const response = await $fetch('/api/extrato', {
             method: 'GET',
             query: query,
-            // ** ATENÇÃO: SUBSTITUIR PELO MÉTODO REAL DE OBTENÇÃO DO TOKEN DO USUÁRIO LOGADO **
+            // Estava: 'Authorization': 'Bearer valid-user-token'
             headers: {
-                'Authorization': 'Bearer valid-user-token' 
+                'Authorization': `Bearer ${token}` 
             }
         }) as { cotistaNome: string, extrato: ExtratoItem[] }
 
@@ -84,6 +104,7 @@ onMounted(fetchExtrato)
 </script>
 
 <template>
+    <Header pageTitle="Extrato" />
   <div class="container mx-auto p-4">
     <h1 class="text-3xl font-bold mb-2">Extrato de Movimentações</h1>
     <p class="text-xl text-gray-600 mb-6">Cotista: {{ cotistaNome }}</p>

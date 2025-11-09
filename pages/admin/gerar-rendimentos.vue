@@ -1,51 +1,86 @@
-// ~/pages/admin/gerar-rendimentos.vue - V2.1 - Script Final com conexão real de cotistas
+// /pages/admin/gerar-rendimentos.vue - V9.4 - Correção Crítica do Parser: Remoção da string HTML do comentário inicial e garantia de quebras de linha estritas no template para resolver o erro de tag inválida persistente.
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '~/stores/auth' 
 
 useHead({
     title: 'Admin | Gerar Rendimentos Customizados',
 })
 
-// Tipagem para os dados que vêm da API /api/cotistas
+// ✅ Mantém o middleware de proteção
+definePageMeta({
+    middleware: ['auth-admin']
+})
+
+// Tipagem para os dados que vêm da API /api/cotistas (inalterada)
 interface CotistaApiItem {
     id: number;
     nomeCompleto: string;
     numeroDaConta: string;
 }
 
-// Tipagem para o estado reativo (Cotistas)
+// Tipagem para o estado reativo (Cotistas) (inalterada)
 interface CotistaStateItem {
     id: number;
     nome: string;
     conta: string;
 }
 
-// --- VARIÁVEIS DE ESTADO ---
+// --- VARIÁVEIS DE ESTADO E LÓGICA DO FORMULÁRIO ---
 const selectedCotistaId = ref<number | null>(null)
-const taxaRendimento = ref(0.04) // Padrão 4%
-const dataInicio = ref('2024-11-23') // Padrão
-const dataFim = ref('2025-06-23') // Padrão
+const taxaRendimento = ref(0.04) 
+const dataInicio = ref('2024-11-23') 
+const dataFim = ref('2025-06-23') 
 
 const isLoading = ref(false)
-const isFetchingCotistas = ref(true)
+const isFetchingCotistas = ref(true) 
 const message = ref('')
-const isError = ref(false)
+const isError = ref(false) 
 const generatedMovements = ref<any[]>([])
-
-// Cotistas agora inicializado como array vazio tipado
 const cotistas = ref<CotistaStateItem[]>([]) 
+
 
 /**
  * Função que busca a lista de cotistas na API /api/cotistas.
+ * 🛑 CRÍTICO V7.0: Executado APENAS no cliente, injetando o token manualmente
  */
 const fetchCotistas = async () => {
+    // 🛑 1. Garante que o fetch só roda no cliente (após a hidratação)
+    if (!process.client) {
+        isFetchingCotistas.value = false
+        return
+    }
+
     isFetchingCotistas.value = true
+    message.value = ''
+    isError.value = false
+
+    const authStore = useAuthStore() 
+    
+    // 🛑 2. Garante que a store foi hidratada ANTES de tentar ler o token
+    await authStore.init() 
+
+    const token = authStore.token
+
+    if (!token) {
+        // Se a store não encontrou o token, isso é um problema de sessão (middleware deve resolver)
+        isError.value = true
+        message.value = "Sessão não detectada. Recarregue a página e tente fazer login."
+        isFetchingCotistas.value = false
+        return 
+    }
+    
     try {
-        // *** SUBSTITUIÇÃO REAL DA CHAMADA DE API ***
+        // 🛑 3. USA $FETCH (o fetch nativo do Nuxt, sem o interceptor $api)
         const response = await $fetch<CotistaApiItem[]>('/api/cotistas', {
-             // ** ATENÇÃO: Use a mesma string de token do verifyToken do auth.ts placeholder
-             headers: { 'Authorization': 'Bearer valid-admin-token' } 
-        })
+             // 🛑 4. Envia o token manualmente no cabeçalho
+             headers: {
+                 Authorization: `Bearer ${token}`
+             },
+             // 🛑 5. CRÍTICO: Força o erro a ser capturado localmente
+             _blockResponseError: true 
+         }) 
         
         // Mapeia os campos da API para os campos esperados no template Vue
         cotistas.value = response.map(c => ({ 
@@ -54,24 +89,36 @@ const fetchCotistas = async () => {
             conta: c.numeroDaConta 
         }));
         
-        // Fim da busca
         isFetchingCotistas.value = false
-        message.value = '' // Limpa a mensagem se a busca for bem-sucedida
+        message.value = '' 
 
     } catch (e: any) {
-        console.error('Erro ao buscar cotistas:', e)
+        console.error('Erro ao buscar cotistas (Isolamento Máximo):', e)
         isFetchingCotistas.value = false
-        message.value = `Erro ao carregar lista de cotistas: ${e.data?.statusMessage || 'Detalhe não disponível'}`
+        
+        const status = e.response?.status;
+        const isAuthError = status === 401 || status === 403;
+
+        if (isAuthError) {
+             // 401/403: Indica falha de permissão ou token, mas não redireciona globalmente.
+             message.value = `ERRO de Autorização (${status}) ao carregar cotistas. O token pode ser inválido. Por favor, tente recarregar a página e logar novamente.`;
+        } else {
+             message.value = `ERRO CRÍTICO (Isolamento Máximo): ${e.response?.status || 0} - ${e.data?.statusMessage || 'Falha de comunicação.'}`
+        }
         isError.value = true
-    }
+    } 
 }
 
+// 🛑 CRÍTICO V7.0: Chamada de API ativada apenas após a montagem do cliente.
 onMounted(fetchCotistas)
 
 
-// --- LÓGICA DE SUBMISSÃO ---
+// --- LÓGICA DE SUBMISSÃO (Otimizada) ---
 const canSubmit = computed(() => {
+    // Garante que a lista de cotistas não está carregando e não houve erro no carregamento da lista
     return !isLoading.value && 
+           !isFetchingCotistas.value &&
+           !isError.value && // Não submete se houve erro ao carregar a lista
            selectedCotistaId.value !== null && 
            taxaRendimento.value > 0 && 
            dataInicio.value !== '' && 
@@ -80,61 +127,101 @@ const canSubmit = computed(() => {
 
 /**
  * Função para acionar a API de geração de rendimentos com dados customizados.
+ * 🛑 CRÍTICO V9.0: Usa $fetch nativo e injeção manual de token.
  */
 const gerarRendimentos = async () => {
-  message.value = ''
-  isError.value = false
-  generatedMovements.value = []
-
-  if (!canSubmit.value) {
-    isError.value = true
-    message.value = 'Preencha todos os campos obrigatórios e garanta que a taxa é positiva.'
-    return
-  }
-
-  isLoading.value = true
-  
-  try {
-    const payload = {
-      cotistaId: selectedCotistaId.value!,
-      taxa: taxaRendimento.value,
-      dataInicio: dataInicio.value,
-      dataFim: dataFim.value,
-    }
-
-    const response = await $fetch('/api/gerar-movimentacao-rendimento', {
-      method: 'POST',
-      body: payload,
-      // ** ATENÇÃO: Ajuste seu método de obtenção de token aqui **
-      headers: {
-        'Authorization': 'Bearer valid-admin-token' 
-      }
-    }) as { success: boolean, count: number, taxaAplicada: number, message: string, movimentacoes: any[] }
-
-    if (response.success) {
-      isError.value = false
-      message.value = response.message
-      generatedMovements.value = response.movimentacoes
+    // Reseta apenas o status de erro e mensagem do formulário, mantendo o status de erro de cotistas, se houver
+    if (isError.value && message.value.includes("ao carregar cotistas")) {
+        // Se o erro for do fetch cotistas, não reseta a mensagem/status para manter o aviso.
     } else {
-      isError.value = true
-      message.value = response.message || 'Erro desconhecido na geração de rendimentos.'
+        message.value = '';
+        isError.value = false;
+    }
+    generatedMovements.value = []
+
+    if (!canSubmit.value) {
+        // Se a falha for no carregamento de cotistas, canSubmit é falso, mas a mensagem já está lá.
+        if (!isFetchingCotistas.value && !isError.value) {
+            isError.value = true
+            message.value = 'Preencha todos os campos obrigatórios e garanta que a taxa é positiva.'
+        }
+        return
     }
 
-  } catch (e: any) {
-    isError.value = true
-    const errorMessage = e.data?.statusMessage || e.message || 'Ocorreu um erro ao comunicar com o servidor.'
-    message.value = `ERRO: ${errorMessage}`
-    console.error('Erro na requisição da API de rendimento:', e)
-  } finally {
-    isLoading.value = false
-  }
+    if (!process.client) {
+        isError.value = true;
+        message.value = "Ação de submissão só pode ser executada no cliente.";
+        return;
+    }
+    
+    // 🛑 CRÍTICO V9.0: Injeção de token manual antes da requisição
+    const authStore = useAuthStore() 
+    await authStore.init() // Garante que o token está lido do localStorage
+    const token = authStore.token
+
+    if (!token) {
+        isError.value = true
+        message.value = "ERRO de Autorização (401): Token de sessão não encontrado após inicialização. Recarregue a página e faça login novamente."
+        return 
+    }
+
+    isLoading.value = true
+    
+    try {
+        const payload = {
+            cotistaId: selectedCotistaId.value!,
+            taxa: taxaRendimento.value,
+            dataInicio: dataInicio.value,
+            dataFim: dataFim.value,
+        }
+
+        // 🛑 V9.0: Usa $fetch nativo e injeta o token manualmente, resolvendo o problema de sincronização do $api.
+        const response = await $fetch('/api/gerar-movimentacao-rendimento', {
+            method: 'POST',
+            body: payload,
+            headers: {
+                Authorization: `Bearer ${token}` // Injeção manual do token
+            },
+            _blockResponseError: true, // Mantém esta flag para tratamento local de erros
+        }) as { success: boolean, count: number, taxaAplicada: number, message: string, movimentacoes: any[] }
+
+        if (response.success) {
+            isError.value = false
+            message.value = response.message
+            generatedMovements.value = response.movimentacoes
+        } else {
+            isError.value = true
+            message.value = response.message || 'Erro desconhecido na geração de rendimentos.'
+        }
+
+    } catch (e: any) {
+        isError.value = true
+        const status = e.response?.status;
+        const isAuthError = status === 401 || status === 403;
+
+        if (isAuthError) {
+            // Se for 401 ou 403, exibe uma mensagem específica.
+            const authErrorMessage = status === 403 
+                ? 'Nível de permissão insuficiente para executar esta ação. (Nível Requerido 2)' 
+                : 'Sessão expirada. Tente recarregar a página e fazer login novamente.';
+            message.value = `ERRO de Autorização (${status}): ${e.data?.statusMessage || authErrorMessage}`;
+        } else {
+            const errorMessage = e.data?.statusMessage || e.message || 'Ocorreu um erro ao comunicar com o servidor.'
+            message.value = `ERRO: ${errorMessage}`
+        }
+        console.error('Erro na requisição da API de rendimento (POST):', e)
+    } finally {
+        isLoading.value = false
+    }
 }
 
-// Constante DIA_LANCAMENTO mantida para exibição na UI
 const DIA_LANCAMENTO = 23
 </script>
 
 <template>
+
+  <header pageTitle="Ajuste de Rendimentos" />
+
   <div class="container mx-auto p-4">
     <h1 class="text-3xl font-bold mb-6">Administração de Lançamentos de Rendimento (Customizado)</h1>
     
@@ -146,12 +233,18 @@ const DIA_LANCAMENTO = 23
         <div class="md:col-span-1">
           <label for="cotistaId" class="block text-sm font-medium text-gray-700 mb-1">Cotista</label>
           <select
-            id="cotistaId"
+            id="cotistaId" 
             v-model.number="selectedCotistaId"
             class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
             :disabled="isLoading || isFetchingCotistas"
           >
             <option :value="null" disabled>Selecione um cotista</option>
+            <option 
+                v-if="isFetchingCotistas" 
+                :value="null" 
+                disabled>
+                Carregando lista...
+            </option>
             <option 
                 v-for="cotista in cotistas" 
                 :key="cotista.id" 
@@ -161,8 +254,9 @@ const DIA_LANCAMENTO = 23
             </option>
           </select>
           <p v-if="isFetchingCotistas" class="text-sm text-gray-500 mt-1">Carregando lista...</p>
-        </div>
-
+          <p v-if="isError && message.includes('cotistas')" class="text-sm text-red-500 mt-1">{{ message }}</p>
+        </div> 
+        
         <div class="md:col-span-1">
           <label for="taxa" class="block text-sm font-medium text-gray-700 mb-1">Taxa Mensal (Decimal)</label>
           <input
@@ -175,8 +269,8 @@ const DIA_LANCAMENTO = 23
             placeholder="Ex: 0.04 para 4%"
             :disabled="isLoading"
           />
-        </div>
-
+        </div> 
+        
         <div class="md:col-span-1">
           <label for="dataInicio" class="block text-sm font-medium text-gray-700 mb-1">Mês Inicial (Dia {{ DIA_LANCAMENTO }})</label>
           <input
@@ -186,8 +280,8 @@ const DIA_LANCAMENTO = 23
             class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
             :disabled="isLoading"
           />
-        </div>
-
+        </div> 
+        
         <div class="md:col-span-1">
           <label for="dataFim" class="block text-sm font-medium text-gray-700 mb-1">Mês Final (Dia {{ DIA_LANCAMENTO }})</label>
           <input
@@ -197,9 +291,9 @@ const DIA_LANCAMENTO = 23
             class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
             :disabled="isLoading"
           />
-        </div>
-
-      </div>
+        </div> 
+        
+      </div> 
       
       <button
         @click="gerarRendimentos"
@@ -213,8 +307,8 @@ const DIA_LANCAMENTO = 23
         <span v-else>Gerar Lançamentos de Rendimento</span>
       </button>
 
-    </div>
-
+    </div> 
+    
     <div v-if="message" :class="[
         'p-4 rounded-md mb-6',
         isError ? 'bg-red-100 border border-red-400 text-red-700' : 'bg-green-100 border border-green-400 text-green-700'
@@ -242,9 +336,9 @@ const DIA_LANCAMENTO = 23
                     </tr>
                 </tbody>
             </table>
-        </div>
-    </div>
-  </div>
+        </div> 
+    </div> 
+  </div> 
 </template>
 
 <style scoped>
