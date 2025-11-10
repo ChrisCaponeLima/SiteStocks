@@ -1,10 +1,11 @@
-// /stores/auth.ts - V4.9 - CORREÇÃO CRÍTICA: Garantia de que a função `init` é aguardável (awaitable) para que o middleware de rotas funcione corretamente, lendo o `userLevel` antes de prosseguir.
+// /stores/auth.ts - V5.3 - CRÍTICO: Persistência de userLevel via Cookie (user_level) para acesso imediato no SSR e correção do cabeçalho.
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useCookie } from '#app' 
 
 type AnyUser = Record<string, any>
-// ✅ NOVO: Definição do tipo da resposta da API de login no formato PLANO
 type ApiAuthResponse = {
+    // ... (Omitindo tipos para manter a concisão, mas o arquivo real deve conter TUDO)
     token: string,
     userId: number,
     cpf: string,
@@ -19,7 +20,6 @@ type ApiAuthResponse = {
     cotistaDataCriacao: string | null,
 }
 
-// Definimos os níveis para fácil referência nos componentes
 export const ACCESS_LEVEL = {
     COTISTA: 0,
     GERENTE: 1,
@@ -28,29 +28,44 @@ export const ACCESS_LEVEL = {
 };
 
 export const useAuthStore = defineStore('auth', () => {
+    
+    // 🛑 CRÍTICO 1: Cookie para o token.
+    const authToken = useCookie<string | null>('auth_token', { 
+        maxAge: 60 * 60 * 24 * 7, 
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax', 
+    })
+    
+    // 🛑 CRÍTICO 2: NOVO Cookie para o nível de acesso (userLevel).
+    const authLevel = useCookie<number | null>('user_level', {
+        maxAge: 60 * 60 * 24 * 7,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+    })
+
+    const token = computed(() => authToken.value)
+    
     const user = ref<AnyUser | null>(null)
-    const token = ref<string | null>(null)
     const isAuthenticated = ref(false)
     const initialized = ref(false)
 
     const cotistaId = ref<number | null>(null)
-    const userLevel = ref<number>(ACCESS_LEVEL.COTISTA) 
+    // 🛑 userLevel agora é inicializado a partir do Cookie OU padrão.
+    const userLevel = ref<number>(authLevel.value ?? ACCESS_LEVEL.COTISTA) 
     const numeroDaConta = ref<string | null>(null) 
 
-    // ✅ Propriedade para armazenar o último payload de login para debug
     const lastLoginPayload = ref<any | null>(null);
 
     const isCotista = computed(() => userLevel.value >= ACCESS_LEVEL.COTISTA)
     const isOwner = computed(() => userLevel.value >= ACCESS_LEVEL.OWNER)
     const isAdmin = computed(() => userLevel.value >= ACCESS_LEVEL.ADMIN)
 
-    // Função auxiliar para verificar acesso a partir de um nível.
     const hasAccess = computed(() => (requiredLevel: number) => {
         return userLevel.value >= requiredLevel;
     });
 
     const setUser = (userData: AnyUser) => {
-        // [Conteúdo do setUser mantido igual ao V4.5]
+        // [Lógica setUser mantida...]
         const normalizedUser: AnyUser = {
             ...userData,
             id: userData.id ?? userData.userId,
@@ -65,8 +80,10 @@ export const useAuthStore = defineStore('auth', () => {
         if (userData.cotistaId !== undefined) {
             cotistaId.value = userData.cotistaId
         }
+        // 🛑 CRÍTICO: setUser/login atualiza o Cookie do nível também.
         if (userData.roleLevel !== undefined) {
             userLevel.value = userData.roleLevel
+            authLevel.value = userData.roleLevel // 🛑 NOVO: Define o Cookie de nível
         }
         if (userData.numeroDaConta !== undefined) {
             numeroDaConta.value = userData.numeroDaConta
@@ -74,7 +91,7 @@ export const useAuthStore = defineStore('auth', () => {
 
         if (process.client) {
             localStorage.setItem('authUser', JSON.stringify(user.value))
-            localStorage.setItem('authLevel', String(userLevel.value)) 
+            // 🛑 REMOVIDO: localStorage.setItem('authLevel', String(userLevel.value)) // Agora está no Cookie
             if (cotistaId.value !== null) {
                 localStorage.setItem('authCotistaId', String(cotistaId.value))
             }
@@ -84,18 +101,16 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
-    // ✅ CRÍTICO: Função `login` agora assume que 'data' é o objeto de resposta PLANO da API
     const login = (data: ApiAuthResponse) => {
-        // ✅ Armazenar o payload completo para debug e persistir no localStorage
+        // [Lógica login mantida...]
         lastLoginPayload.value = data; 
         if (process.client) {
             localStorage.setItem('debugLastLoginPayload', JSON.stringify(data));
         }
 
-        token.value = data.token || null
+        // 🛑 Define o token no Cookie.
+        authToken.value = data.token || null
         
-        // ✅ CRÍTICO: Mapeamento dos dados da resposta PLANO da API para o objeto `user` do store.
-        // As propriedades são lidas diretamente de `data` (o objeto de resposta da API no root)
         user.value = {
             id: data.userId, 
             userId: data.userId,
@@ -107,21 +122,18 @@ export const useAuthStore = defineStore('auth', () => {
             roleLevel: data.roleLevel,
             roleName: data.roleName,
             cotistaId: data.cotistaId,
-            numeroDaConta: data.numeroDaConta, // ✅ Lendo numeroDaConta diretamente do root da resposta da API
+            numeroDaConta: data.numeroDaConta, 
         }
         isAuthenticated.value = true
 
         cotistaId.value = data.cotistaId ? Number(data.cotistaId) : null 
         userLevel.value = data.roleLevel ?? ACCESS_LEVEL.COTISTA 
-        numeroDaConta.value = data.numeroDaConta ?? null // ✅ Lendo numeroDaConta diretamente do root da resposta da API
+        authLevel.value = data.roleLevel ?? ACCESS_LEVEL.COTISTA // 🛑 NOVO: Define o Cookie de nível
+        numeroDaConta.value = data.numeroDaConta ?? null
 
         if (process.client) {
-            if (token.value) localStorage.setItem('authToken', token.value)
-            
-            // Persistindo o objeto user completo
             localStorage.setItem('authUser', JSON.stringify(user.value))
-            
-            localStorage.setItem('authLevel', String(userLevel.value)) 
+            // 🛑 REMOVIDO: localStorage.removeItem('authLevel')
             if (cotistaId.value !== null) {
                 localStorage.setItem('authCotistaId', String(cotistaId.value))
             }
@@ -133,8 +145,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     const logout = () => {
-        // [Conteúdo do logout mantido]
-        token.value = null
+        // 🛑 CRÍTICO: Limpa os Cookies
+        authToken.value = null
+        authLevel.value = null
+        
         user.value = null
         isAuthenticated.value = false
 
@@ -147,39 +161,51 @@ export const useAuthStore = defineStore('auth', () => {
         }
 
         if (process.client) {
-            localStorage.removeItem('authToken')
             localStorage.removeItem('authUser')
             localStorage.removeItem('authCotistaId')
-            localStorage.removeItem('authLevel') 
+            localStorage.removeItem('authLevel') // ⚠️ Se esta linha ainda existir, pode ser removida (já que migramos)
             localStorage.removeItem('authNumeroDaConta')
         }
         initialized.value = true
     }
 
     const init = async () => {
-        // ✅ COMO ESTAVA: if (initialized.value) return
-        // ✅ COMO ESTÁ: Garante que o retorno é uma Promise resolvida
         if (initialized.value) return Promise.resolve() 
         
+        const tokenValue = authToken.value
+        
         if (!process.client) {
+            // 🛑 CRÍTICO SSR: Se o token existe, define o isAuthenticated E o userLevel.
+            if (tokenValue) {
+                isAuthenticated.value = true 
+                // 🛑 NOVO: Lê o nível do Cookie (user_level), que está na memória do ref.
+                // O middleware agora tem o nível para checagem imediata.
+                userLevel.value = authLevel.value ?? ACCESS_LEVEL.COTISTA 
+            } else {
+                userLevel.value = ACCESS_LEVEL.COTISTA // Garante o padrão
+            }
             initialized.value = true
-            return Promise.resolve() // ✅ Garante que o SSR também resolve a Promise
+            return Promise.resolve() 
         }
-         
+        
+        // Lógica do lado do Cliente (Hydration)
         try {
-            const savedToken = localStorage.getItem('authToken')
+            // 🛑 ATENÇÃO: O nível agora é lido primariamente do Cookie (authLevel.value)
             const savedUser = localStorage.getItem('authUser')
             const savedCotistaId = localStorage.getItem('authCotistaId')
-            const savedLevel = localStorage.getItem('authLevel') 
             const savedNumeroDaConta = localStorage.getItem('authNumeroDaConta')
             const savedDebugPayload = localStorage.getItem('debugLastLoginPayload');
+            
             if (savedDebugPayload) {
                 lastLoginPayload.value = JSON.parse(savedDebugPayload);
             }
 
-            if (savedToken && savedUser) {
-                token.value = savedToken
+            if (tokenValue && savedUser) {
+                
                 const parsed = JSON.parse(savedUser)
+                // 🛑 ATENÇÃO: Como o user no localStorage NÃO tem todos os campos (nome/sobrenome/conta)
+                // Precisamos garantir que eles estejam ali para o cabeçalho.
+                
                 const normalizedUser: AnyUser = {
                     ...parsed,
                     id: parsed.id ?? parsed.userId,
@@ -189,35 +215,32 @@ export const useAuthStore = defineStore('auth', () => {
                 isAuthenticated.value = true
                 
                 cotistaId.value = savedCotistaId ? Number(savedCotistaId) : null
-                userLevel.value = savedLevel ? Number(savedLevel) : ACCESS_LEVEL.COTISTA 
+                // 🛑 userLevel lido do Cookie (authLevel.value) ou fallback para o que está no ref (que foi setado pelo Cookie)
+                userLevel.value = authLevel.value ?? ACCESS_LEVEL.COTISTA
                 numeroDaConta.value = savedNumeroDaConta || null
-
+                
             } else {
-                token.value = null
-                user.value = null
-                isAuthenticated.value = false
-                cotistaId.value = null
-                userLevel.value = ACCESS_LEVEL.COTISTA 
-                numeroDaConta.value = null
+                logout() 
             }
         } catch (err) {
             console.error('auth.init: erro inesperado', err)
+            logout()
         } finally {
             initialized.value = true
         }
         
-        return Promise.resolve() // ✅ CRÍTICO: Garante que a Promise retorne e o 'await' no middleware possa prosseguir.
+        return Promise.resolve() 
     }
 
     return {
         user,
-        token,
+        token, 
         isAuthenticated,
         initialized,
         isAdmin,
         isOwner,
         isCotista,
-        userLevel, 
+        userLevel, // 🛑 userLevel agora é SSR-safe.
         hasAccess, 
         login,
         logout,

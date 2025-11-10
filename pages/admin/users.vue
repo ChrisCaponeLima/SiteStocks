@@ -1,0 +1,34 @@
+// /pages/admin/users.vue - V1.0 - Tela principal de Manutenção de Usuários (Acesso Nível 1+)
+<script setup lang="ts">
+import { useAuthStore } from '~/stores/auth'
+
+// 🔑 Aplica o middleware de proteção Nível 1 (auth-level1)
+definePageMeta({
+  middleware: ['auth-level1'], 
+  layout: 'admin', // Assumindo que você tem um layout 'admin'
+  title: 'Manutenção de Usuários'
+})
+
+const authStore = useAuthStore()
+
+// Verifica se o middleware falhou ou se o usuário não está logado
+if (!authStore.isAuthenticated || authStore.userLevel < authStore.ACCESS_LEVEL.GERENTE) {
+    // A navegação de login é tratada pelo middleware, mas este é um fail-safe
+    if (process.client) {
+        console.warn('Redirecionamento não esperado: Acesso não autorizado.')
+    }
+}
+</script>
+
+<template>
+  <div class="page-container">
+    <AdminUserListTable />
+  </div>
+</template>
+
+<style scoped>
+/* Adicione estilos específicos para o container da página, se necessário */
+.page-container {
+    padding: 20px;
+}
+</style>

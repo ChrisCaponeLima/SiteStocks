@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "build": "npx prisma generate && nuxt build",
+    "db:pull": "prisma --schema=prisma/schema.prisma db pull",
+    "db:push": "prisma --schema=prisma/schema.prisma db push",
+    "db:generate": "prisma --schema=prisma/schema.prisma generate",
+    "db:migrate": "prisma --schema=prisma/schema.prisma migrate dev",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",

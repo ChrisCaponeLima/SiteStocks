@@ -219,8 +219,7 @@ const DIA_LANCAMENTO = 23
 </script>
 
 <template>
-
-  <header pageTitle="Ajuste de Rendimentos" />
+  <Header pageTitle="Ajuste de Rendimentos" />
 
   <div class="container mx-auto p-4">
     <h1 class="text-3xl font-bold mb-6">Administração de Lançamentos de Rendimento (Customizado)</h1>

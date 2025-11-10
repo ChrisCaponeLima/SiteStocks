@@ -1,13 +1,20 @@
-// /pages/index.vue - V6.0 - CORREÇÃO CRÍTICA 401: Migra 'useFetch' para usar '$api' (instância autenticada) do plugin '03.api.ts'.
-// Anteriormente: V5.0 - MIGRAÇÃO: Substitui o mock de dados fixos por 'useFetch' real do endpoint /api/cotista/summary.get.ts, utilizando o cotistaId do Pinia Store.
+// /pages/index.vue - V11.0 - AJUSTE DO CARTÃO: Implementa o VALID THRU (Mês/Ano Atual + 6).
+// Anteriormente: V10.0 - AJUSTE DO CARTÃO: Implementa a lógica dinâmica TTMM-DDXX-0000-UUUU.
 
 <script setup lang="ts">
-import { ref, computed } from 'vue' 
+import { ref, computed, watch } from 'vue' 
 import { useAuthStore } from '~/stores/auth'; 
-import { storeToRefs } from 'pinia'; // Necessário para reatividade do cotistaId
+import { storeToRefs } from 'pinia'; 
 
-// ➡️ NOVO: Injeta a instância customizada de ofetch ($api) do plugin 03.api.ts
+// ➡️ Injeta a instância customizada de ofetch ($api) do plugin 03.api.ts
 const { $api } = useNuxtApp();
+
+// --------------------------------------------------------------------------------
+// ✅ INTEGRAÇÃO COM AUTH STORE
+// --------------------------------------------------------------------------------
+const authStore = useAuthStore();
+// Obtém o cotistaId e o objeto user (que contém o nome e sobrenome) de forma reativa.
+const { cotistaId, user } = storeToRefs(authStore); 
 
 // Variável de estado para controlar a visibilidade dos valores
 const showValues = ref(true) 
@@ -17,27 +24,24 @@ const toggleValuesVisibility = () => {
  showValues.value = !showValues.value
 }
 
-const authStore = useAuthStore();
-// ✅ CORREÇÃO: Usando storeToRefs para manter a reatividade do cotistaId no setup.
-const { cotistaId } = storeToRefs(authStore);
-
 
 // --------------------------------------------------------------------------------
-// ✅ INÍCIO DA BUSCA DE DADOS REAIS (V6.0)
+// ✅ INÍCIO DA BUSCA DE DADOS REAIS 
 // --------------------------------------------------------------------------------
 
 // 1. Dados Fixos do Cotista
-// Inicializa os dados com valores que serão sobrepostos pelo useFetch
 const cotistaData = ref({
     capitalInicial: 0,
     fundoId: 0,
     historicoRentabilidade: [] as { mesAno: string, valorFundo: number, valorPoupanca: number }[],
     saldoTotal: 0,
     totalGanhos: 0,
+    // Campos dinâmicos do cartão
+    dataCriacao: '1970-01-01T00:00:00Z', 
+    numeroDaConta: 'STOCKS-0000',
 });
 
 // 2. Buscando dados na API
-// Usa 'watch' com 'immediate: true' para garantir que a busca ocorra assim que o cotistaId estiver disponível
 const { pending, error, data } = useFetch('/api/cotista/summary', {
     // Busca só é feita se cotistaId > 0 (autenticado)
     lazy: true,
@@ -46,19 +50,19 @@ const { pending, error, data } = useFetch('/api/cotista/summary', {
         cotistaId: cotistaId, // Passa a variável reativa
     },
     // 🚨 CORREÇÃO CRÍTICA 401: Usa a instância autenticada '$api' como fetcher.
-    // Motivo: Garante que o interceptor de token definido em /plugins/03.api.ts seja executado.
-    // Como estava: useFetch padrão (sem token).
-    // Como deve funcionar: useFetch com $api customizado (com token no cabeçalho).
     $fetch: $api, 
     watch: [cotistaId],
     transform: (responseData: any) => {
-        // Mapeia a resposta da API para a estrutura local
+        // Mapeia a resposta da API para a estrutura local (incluindo novos campos)
         return {
             capitalInicial: responseData.capitalInicial || 0,
             fundoId: responseData.fundoId || 0,
             historicoRentabilidade: responseData.historicoRentabilidade || [],
             saldoTotal: responseData.saldoTotal || 0,
             totalGanhos: responseData.totalGanhos || 0,
+            // Mapeando campos do cartão
+            dataCriacao: responseData.dataCriacao || '1970-01-01T00:00:00Z',
+            numeroDaConta: responseData.numeroDaConta || 'STOCKS-0000',
         };
     }
 });
@@ -72,7 +76,58 @@ watch(data, (newVal) => {
 
 
 // --------------------------------------------------------------------------------
-// ✅ FIM DA BUSCA DE DADOS REAIS (V6.0)
+// ✅ CÁLCULO DINÂMICO DOS DETALHES DO CARTÃO
+// --------------------------------------------------------------------------------
+
+// 1. Número do Cartão Virtual (TTMM-DDXX-0000-UUUU)
+const formattedCardNumber = computed(() => {
+    const date = new Date(cotistaData.value.dataCriacao);
+    // Mês + 1, formatado para 2 dígitos (MM)
+    const MM = (date.getMonth() + 1).toString().padStart(2, '0');
+    // Dia, formatado para 2 dígitos (DD)
+    const DD = date.getDate().toString().padStart(2, '0');
+    // Ano Atual (TT)
+    const TT = new Date().getFullYear().toString().slice(-2);
+    // UUUU (ID da Conta)
+    let UUUU = '0000';
+    const match = cotistaData.value.numeroDaConta.match(/(\d+)$/);
+    if (match && match[1]) {
+        UUUU = match[1].padStart(4, '0').slice(-4); 
+    }
+
+    // PADDING FIXO
+    const PADDING_2D = '42';
+    const PADDING_4D = '0000'; 
+    
+    // Formato: 2508 2042 0000 1005
+    const Bloco1 = `${TT}${MM}`; // TT + MM
+    const Bloco2 = `${DD}${PADDING_2D}`; // DD + 42
+    const Bloco3 = PADDING_4D;
+    const Bloco4 = UUUU;
+    
+    return `${Bloco1} ${Bloco2} ${Bloco3} ${Bloco4}`;
+});
+
+// 2. Data de Validade (VALID THRU: Mês de Cadastro / Ano Atual + 6)
+const formattedValidThru = computed(() => {
+    try {
+        const creationDate = new Date(cotistaData.value.dataCriacao);
+        // Mês de cadastro (MM), formatado para 2 dígitos
+        const month = (creationDate.getMonth() + 1).toString().padStart(2, '0');
+        
+        // Ano de expiração: Ano atual + 6 anos (últimos 2 dígitos)
+        const currentYear = new Date().getFullYear();
+        const expiryYear = (currentYear + 6).toString().slice(-2);
+        
+        return `${month}/${expiryYear}`; // Ex: 08/31 (se o ano atual for 25)
+    } catch {
+        return '01/99'; // Fallback
+    }
+});
+
+
+// --------------------------------------------------------------------------------
+// FIM DO CÁLCULO DINÂMICO DOS DETALHES DO CARTÃO
 // --------------------------------------------------------------------------------
 
 
@@ -244,23 +299,25 @@ diffDisplay: formatCurrency(fundEarnings - poupancaEarnings)
 })
 })
 
-// Lógica de Geração de Análise (LLM) - MANTIDO
+// Lógica de Geração de Análise (LLM) - ✅ AJUSTADO PARA USAR O NOME COMPLETO
 const generateAnalysis = async () => {
 isGenerating.value = true
 showAnalysis.value = true
 analysisResult.value = ''
 
+// ✅ V9.0 - Usa Nome e Sobrenome
+const userName = `${user.value?.nome || ''} ${user.value?.sobrenome || 'Investidor(a)'}`.trim();
 const initialInvestmentDisplay = initialInvestment.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const currentFundValueDisplay = currentFundValue.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const prompt = `Com base nos dados de investimento de Jaguar Invest:
+const prompt = `Com base nos dados de investimento de ${userName}:
 - Investimento Inicial: R$ ${initialInvestmentDisplay}
 - Taxa de Rendimento Mensal do Fundo: ${fundRate.value * 100}%
 - Período total de investimento: ${historico.value.length} meses
 - Valor Atual do Fundo: R$ ${currentFundValueDisplay}
 
 Gere uma breve análise personalizada do desempenho deste investimento.
-1. Destaque: A importância da taxa de juros e do tempo, usando os valores reais de Jaguar Invest para ilustrar.
+1. Destaque: A importância da taxa de juros e do tempo, usando os valores reais de ${userName} para ilustrar.
 2. Sugestões de Aportes Mensais: Inclua sugestões de aportes mensais, como R$50, R$100, R$200, explicando o impacto qualitativo de cada um no crescimento do patrimônio (por exemplo, "aceleraria ainda mais o seu crescimento", "ampliaria significativamente seu patrimônio", "potencializaria seus ganhos"). Não calcule valores exatos de projeção, mas enfatize a ideia de aceleração e potencial.
 3. Projeção Motivacional (Curta): Uma frase sobre o potencial de crescimento futuro se o investimento for mantido e com aportes consistentes.
 4. Tom: Encorajador e informativo.
@@ -269,7 +326,8 @@ Gere uma breve análise personalizada do desempenho deste investimento.
 try {
 await new Promise(resolve => setTimeout(resolve, 2000)) 
 
-analysisResult.value = `Parabéns, Jaguar Invest, seu investimento inicial de ${formatCurrency(initialInvestment.value)} no Fundo Jaguar Alpha demonstrou a força da rentabilidade de ${fundRate.value * 100}% ao mês. Seu patrimônio atual de ${formatCurrency(currentFundValue.value)} já supera significativamente a Poupança, comprovando que a escolha da taxa de juros correta é crucial para a multiplicação do capital ao longo do tempo. Para **acelerar ainda mais o seu crescimento**, aportes mensais de **R$500** já fariam uma grande diferença; **R$1.000** ampliaria significativamente seu patrimônio; e com **R$2.000** você potencializaria seus ganhos, aproveitando o poder dos juros compostos. Continue acompanhando e investindo, pois seu dinheiro está trabalhando duro: **A consistência hoje garante a tranquilidade financeira de amanhã!**`
+// ✅ V9.0 - O texto da análise agora usa a variável 'userName'
+analysisResult.value = `Parabéns, ${userName}, seu investimento inicial de ${formatCurrency(initialInvestment.value)} no Fundo Jaguar Alpha demonstrou a força da rentabilidade de ${fundRate.value * 100}% ao mês. Seu patrimônio atual de ${formatCurrency(currentFundValue.value)} já supera significativamente a Poupança, comprovando que a escolha da taxa de juros correta é crucial para a multiplicação do capital ao longo do tempo. Para **acelerar ainda mais o seu crescimento**, aportes mensais de **R$500** já fariam uma grande diferença; **R$1.000** ampliaria significativamente seu patrimônio; e com **R$2.000** você potencializaria seus ganhos, aproveitando o poder dos juros compostos. Continue acompanhando e investindo, pois seu dinheiro está trabalhando duro: **A consistência hoje garante a tranquilidade financeira de amanhã!**`
 
 } catch (err) {
 analysisResult.value = 'Não foi possível gerar a análise. Tente novamente.'
@@ -277,6 +335,19 @@ analysisResult.value = 'Não foi possível gerar a análise. Tente novamente.'
 isGenerating.value = false
 }
 }
+
+// --------------------------------------------------------------------------------
+// ✅ NOVA FUNÇÃO: Navegação para a página de Depósito PIX (Nível 0)
+// --------------------------------------------------------------------------------
+
+const goToAportePage = () => {
+    navigateTo('/pix-generator'); 
+}
+
+// --------------------------------------------------------------------------------
+// ✅ FIM DA NOVA FUNÇÃO
+// --------------------------------------------------------------------------------
+
 
 // Configuração de SEO/Título da Página (MANTIDO)
 useHead({
@@ -337,14 +408,17 @@ Carregando Dados do Investimento...
  <div class="relative z-10 h-full flex flex-col justify-end p-4 pb-10">
   
     <p class="text-xl sm:text-2xl font-mono font-bold tracking-wider mb-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.7), 2px 2px 3px rgba(0,0,0,0.5);">
-   4242 4242 4242 4242
+        {{ formattedCardNumber }}
   </p>
   
   <div class="flex justify-between items-center text-sm sm:text-base font-semibold">
    
-      <p class="uppercase" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.7);">JAGUAR INVEST</p>
+            <p class="uppercase" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.7);">
+        {{ `${user?.nome || ''} ${user?.sobrenome || 'COTISTA'}`.toUpperCase() }}
+      </p>
    
-      <p style="text-shadow: 1px 1px 2px rgba(0,0,0,0.7);">VALID THRU: 12/26</p>
+      <p style="text-shadow: 1px 1px 2px rgba(0,0,0,0.7);">
+        VALID THRU: {{ formattedValidThru }}       </p>
   </div>
  </div>
   </div>
@@ -353,7 +427,10 @@ Carregando Dados do Investimento...
     
     <div class="flex overflow-x-auto snap-x snap-mandatory space-x-4 pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
 
-      <div class="snap-center min-w-[50%] sm:min-w-[calc(100%/3)] md:min-w-[calc(100%/4)] flex-shrink-0">
+              <div 
+            @click="goToAportePage" 
+            class="snap-center min-w-[50%] sm:min-w-[calc(100%/3)] md:min-w-[calc(100%/4)] flex-shrink-0 cursor-pointer"
+        >
         <div class="bg-blue-100 p-4 rounded-xl shadow-md flex flex-col items-center text-center h-full hover:bg-blue-200 transition duration-150">
           <span class="text-3xl mb-2">💰</span>
           <p class="font-semibold text-blue-900">Aporte</p>

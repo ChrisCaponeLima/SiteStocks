@@ -1,113 +1,92 @@
-// /server/api/cotista/[id]/deposito.post.ts - V1.3 - Implementação de tratamento específico para erros de Unique Constraint (P2002) no banco de dados.
+// /server/api/cotista/[id]/deposito.post.ts - V10.3 - SIMPLIFICAÇÃO: Removida redundância de userId, usando cotistaId para reserva do PIX.
+
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma'
-import { StatusDeposito, Prisma } from '@prisma/client' // V1.3 - Adicionando 'Prisma' para acesso a erros
+import { StatusDeposito } from '@prisma/client' 
 import Decimal from 'decimal.js' 
 
-// V1.0 - CONSTANTES DO RECEBEDOR
-const RECEIVER_PIX_KEY = 'c_cappone+btg@hotmail.com'
-const RECEIVER_NAME = 'Christiano Gomes de Lima'
-const RECEIVER_CITY = 'NA'
-
-// V1.0 - Função utilitária para gerar o Payload Pix Mockado (SIMULAÇÃO)
-const generateMockPixPayload = (amount: number, txid: string): string => {
-    const amountString = amount.toFixed(2)
-    const amountTag = `54${amountString.length.toString().padStart(2, '0')}${amountString}` 
-    
-    const formattedName = RECEIVER_NAME.substring(0, 25).toUpperCase().replace(/[^A-Z0-9.\- ]/g, '').trim()
-    const formattedCity = RECEIVER_CITY.substring(0, 15).toUpperCase().replace(/[^A-Z0-9.\- ]/g, '').trim()
-    
-    const pixData = 
-        `00020101021226650014br.gov.bcb.pix01${RECEIVER_PIX_KEY.length.toString().padStart(2, '0')}${RECEIVER_PIX_KEY}0214De Cida Duarte520400005303986${amountTag}5802BR59${formattedName.length.toString().padStart(2, '0')}${formattedName}60${formattedCity.length.toString().padStart(2, '0')}${formattedCity}6207${txid}63045F1C`
-    
-    return pixData
-}
-
-// V1.0 - Manipulador de evento para a rota POST
 export default defineEventHandler(async (event) => {
     const prisma = usePrisma()
+    // Padronização e verificação de variáveis (mantidas)
+    const cotistaIdParam = getRouterParam(event, 'id')
+    const cotistaId = Number(cotistaIdParam) 
+    const body = await readBody(event)
+    // 🛑 Simplificado: Agora só precisamos do depositAmount, pois usaremos cotistaId (da URL) para a reserva.
+    const { depositAmount } = body 
 
-    // 1. EXTRAÇÃO E VALIDAÇÃO DE DADOS
-    const cotistaIdParam = getRouterParam(event, 'id');
-    const cotistaId = Number(cotistaIdParam);
 
     if (isNaN(cotistaId)) {
-        throw createError({ statusCode: 400, statusMessage: 'ID do Cotista inválido.' });
+        throw createError({ statusCode: 400, statusMessage: 'ID do Cotista inválido.' })
     }
 
-    const body = await readBody(event);
-    const { depositAmount } = body; 
-
-    if (typeof depositAmount !== 'number' || depositAmount <= 0) {
-        throw createError({ statusCode: 400, statusMessage: 'Valor do depósito inválido ou ausente.' });
+    if (!depositAmount || new Decimal(depositAmount).lte(0)) {
+        throw createError({ statusCode: 400, statusMessage: 'Valor de depósito inválido.' })
     }
     
-    // V1.2 - Converte o valor para Decimal para garantir a precisão antes do DB
-    const valorDecimal = new Decimal(depositAmount)
+    // Converte o valor para o formato correto do banco de dados (mantido)
+    const valorParaDB = new Decimal(depositAmount).toFixed(2)
 
     try {
-        // V1.2 - PASSO CRÍTICO: VERIFICA SE O COTISTA EXISTE
-        const cotistaExists = await prisma.cotista.findUnique({
-            where: { id: cotistaId },
-            select: { id: true }
+        // 1. VERIFICAR SE O COTISTA EXISTE (mantido)
+        const cotistaExists = await prisma.cotista.findUnique({ where: { id: cotistaId }, select: { id: true } })
+        if (!cotistaExists) { throw createError({ statusCode: 404, statusMessage: `Cotista com ID ${cotistaId} não encontrado.` }) }
+        
+        // 2. BUSCAR E RESERVAR O CÓDIGO PIX ESTÁTICO (Status 'ATIVO' mantido)
+        const pixCodeRecord = await prisma.pixCopiaColaEstatico.findFirst({
+            where: { status: 'ATIVO' }, 
+            orderBy: { id: 'asc' } 
         })
 
-        if (!cotistaExists) {
-             throw createError({ statusCode: 404, statusMessage: `Cotista com ID ${cotistaId} não encontrado.` });
+        if (!pixCodeRecord) {
+            throw createError({ statusCode: 503, statusMessage: 'Nenhum código PIX disponível no momento. Tente mais tarde.' })
         }
-        
-        // 2. GERAÇÃO DE TXID E PAYLOAD (MOCK)
-        // V1.3 - Gerando um TXID que é menos propenso a colisões em testes rápidos: timestamp + 3 dígitos randômicos.
-        const mockTxid = (Date.now()).toString().slice(-10) + Math.floor(Math.random() * 900 + 100).toString(); 
-        const generatedPayload = generateMockPixPayload(depositAmount, mockTxid);
 
-        // 3. PERSISTÊNCIA NO BANCO DE DADOS (DepositoPixPendente)
-        const newDepositRequest = await prisma.depositoPixPendente.create({
-            data: {
-                cotistaId: cotistaId,
-                status: StatusDeposito.PENDENTE, 
-                valorSolicitado: valorDecimal.toFixed(2), 
-                dataSolicitacao: new Date(), // V1.3 - Explicitamente definindo 'dataSolicitacao' para evitar problemas de timezone/default DB.
-                pixPayload: generatedPayload, 
-            },
-            select: {
-                id: true,
-                valorSolicitado: true,
-                pixPayload: true,
-            }
-        });
+        // 3. ATUALIZAÇÃO TRANSACIONAL DO CÓDIGO ESTÁTICO E CRIAÇÃO DO DEPÓSITO
+        const transaction = await prisma.$transaction(async (tx) => {
+            
+            // A. Atualizar o registro do Código Estático (MARCAR COMO UTILIZADO)
+            const updatedPixCode = await tx.pixCopiaColaEstatico.update({
+                where: { id: pixCodeRecord.id },
+                data: {
+                    status: 'UTILIZADO',
+                    utilizadoEm: new Date(),
+                    // 🔑 ALTERAÇÃO CRÍTICA: Usando cotistaId, que é o ID do cotista logado
+                    cotistaQueUtilizouId: cotistaId,
+                    valorInformado: valorParaDB 
+                }
+            })
 
-        // 4. RETORNO PARA O CLIENTE
+            // B. Criação do Registro de Depósito Pendente (mantido)
+            const newDepositRequest = await tx.depositoPixPendente.create({
+                data: {
+                    cotistaId: cotistaId,
+                    status: StatusDeposito.PENDENTE, 
+                    valorSolicitado: valorParaDB, 
+                    dataSolicitacao: new Date(), 
+                    pixPayload: updatedPixCode.codigo, 
+                },
+                select: { id: true, valorSolicitado: true, pixPayload: true }
+            })
+
+            return newDepositRequest
+        })
+
+
+        // 4. RETORNO (mantido)
         return {
-            message: 'Solicitação de depósito registrada com sucesso. Aguardando pagamento.',
-            pixPayload: newDepositRequest.pixPayload, 
-            transactionId: newDepositRequest.id,
-            depositValue: newDepositRequest.valorSolicitado,
-        };
+            message: 'Solicitação de depósito registrada com sucesso. Utilize o QR Code/Copia e Cola.',
+            pixPayload: transaction.pixPayload, 
+            transactionId: transaction.id,
+            depositValue: transaction.valorSolicitado,
+        }
 
     } catch (error: any) {
-        console.error('ERRO ao registrar depósito Pix:', error);
+        console.error('ERRO CRÍTICO NO FLUXO DE DEPÓSITO PIX:', error) 
         
-        // V1.3 - TRATAMENTO ESPECÍFICO PARA ERRO DE UNIQUE CONSTRAINT (P2002)
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-            if (error.code === 'P2002') {
-                const target = Array.isArray(error.meta?.target) ? error.meta?.target.join(', ') : error.meta?.target;
-                
-                throw createError({
-                    statusCode: 500,
-                    statusMessage: `Falha de UNIQUE CONSTRAINT no campo: '${target}'. Verifique se o campo no schema está correto ou se o valor está sendo duplicado. (Prisma P2002)`,
-                });
-            }
-        }
-
-        // V1.2 - Erros genéricos de DB ou de infraestrutura
-        if (error.statusCode === 404) {
-             throw error; 
-        }
-
+        // Se houver erro de transação (ex: registro duplicado, falha na atualização), revertemos.
         throw createError({ 
             statusCode: 500, 
-            statusMessage: 'Falha ao processar solicitação de depósito no banco de dados. (Erro de DB não mapeado)'
-        });
+            statusMessage: 'Falha ao processar solicitação de depósito. O código PIX pode ter sido reservado por outro usuário simultaneamente. Tente novamente.'
+        })
     }
-});
+})

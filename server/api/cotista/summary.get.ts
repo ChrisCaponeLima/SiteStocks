@@ -1,5 +1,6 @@
-// /server/api/cotista/summary.get.ts - V1.1 - CORREÇÃO CRÍTICA: Exclui o 'APORTE' inicial da MovimentacaoCotista para evitar duplicação no Saldo Total.
-// Anteriormente: V1.0 - Endpoint para calcular o Saldo Total e Ganhos de um Cotista pelo ID.
+// /server/api/cotista/summary.get.ts - V1.2 - ADICIONA dataCriacao e numeroDaConta para o cálculo do cartão no frontend.
+// Anteriormente: V1.1 - CORREÇÃO CRÍTICA: Exclui o 'APORTE' inicial da MovimentacaoCotista para evitar duplicação no Saldo Total.
+
 import { defineEventHandler, getQuery, createError } from 'h3';
 import { PrismaClient } from '@prisma/client';
 
@@ -12,6 +13,9 @@ interface CotistaSummary {
     capitalInicial: number;
     fundoId: number;
     historicoRentabilidade: any[];
+    // ✅ NOVOS CAMPOS ADICIONADOS
+    dataCriacao: string;
+    numeroDaConta: string;
 }
 
 export default defineEventHandler(async (event) => {
@@ -27,12 +31,15 @@ export default defineEventHandler(async (event) => {
     }
 
     try {
-        // 2. Buscar dados básicos do cotista
+        // 2. Buscar dados básicos do cotista (incluindo os novos campos)
         const cotista = await prisma.cotista.findUnique({
             where: { id: cotistaId },
             select: {
                 capitalInicial: true,
                 fundoId: true,
+                // ✅ CAMPOS ADICIONADOS PARA O CÁLCULO DO CARTÃO
+                dataCriacao: true, 
+                numeroDaConta: true,
             },
         });
 
@@ -121,6 +128,9 @@ export default defineEventHandler(async (event) => {
             capitalInicial,
             fundoId: cotista.fundoId || 0,
             historicoRentabilidade: mappedHistorico,
+            // ✅ CAMPOS RETORNADOS
+            dataCriacao: cotista.dataCriacao.toISOString(), // Converte Date para string ISO para fácil consumo no frontend
+            numeroDaConta: cotista.numeroDaConta,
         };
 
         return response;

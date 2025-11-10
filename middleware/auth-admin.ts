@@ -1,34 +1,34 @@
-// /middleware/auth-admin.ts - V1.2 - CORREÇÃO: Define o Nível Mínimo Requerido para acesso a esta rota como 2, conforme solicitado pelo cliente.
-import { useAuthStore } from '~/stores/auth' 
+// /middleware/auth-admin.ts - V1.6 - CRÍTICO: Reforço no uso do ACCESS_LEVEL e token SSR-safe.
+import { useAuthStore, ACCESS_LEVEL } from '~/stores/auth' // 🛑 Importa ACCESS_LEVEL
 
-// 🛑 ALTERAÇÃO CRÍTICA V1.2: O nível mínimo requerido para acessar esta rota é 2.
-const MIN_REQUIRED_LEVEL = 2
+// 🛑 O nível mínimo requerido para acessar esta rota é 2 (Admin).
+const MIN_REQUIRED_LEVEL = ACCESS_LEVEL.ADMIN // 🛑 Usa a constante exportada
 
 export default defineNuxtRouteMiddleware(async (to, from) => {
-    // É crucial ter certeza que a store foi inicializada e hidratada, especialmente em rotas protegidas.
     const authStore = useAuthStore()
 
-    // 1. CRÍTICO: Garante que a store Pinia inicie a hidratação se ainda não o fez.
+    // 1. CRÍTICO: Garante que a store Pinia inicie a hidratação.
     await authStore.init() 
 
-    // 2. Verifica se o usuário tem o nível mínimo de acesso (Nível 2 ou superior).
-    const isAuthorized = authStore.userLevel >= MIN_REQUIRED_LEVEL
-
-    // 3. Verifica se o token existe e se a autorização é válida.
-    if (!authStore.token || !isAuthorized) {
-        
-        // Em caso de falha de autenticação/autorização no cliente
+    // 2. VERIFICAÇÃO INICIAL DE AUTENTICAÇÃO (TOKEN EXISTE NO COOKIE/REF?)
+    if (!authStore.token) {
         if (process.client) {
-            // Limpa o token expirado/inválido para forçar novo login
             authStore.logout() 
-            console.warn(`Acesso negado à rota ${to.path}. Nível ${authStore.userLevel} não é suficiente (Requer Nível ${MIN_REQUIRED_LEVEL}). Redirecionando para login.`)
-            // Redireciona para o login com o caminho de retorno
+            console.warn(`Acesso negado à rota ${to.path}. Token ausente. Redirecionando para login.`)
             return navigateTo('/login?redirect=' + to.fullPath)
         }
-        
-        // No lado do servidor (SSR), retorna a navegação abortada.
-        return abortNavigation('Acesso Proibido. Nível de permissão não atingido.')
+        // 🛑 CORREÇÃO CRÍTICA SSR: Navega para o login.
+        return navigateTo('/login?redirect=' + to.fullPath)
     }
+    
+    // 3. VERIFICAÇÃO DE AUTORIZAÇÃO (NÍVEL) - AGORA SSR-SAFE
+    const isAuthorized = authStore.userLevel >= MIN_REQUIRED_LEVEL // 🛑 userLevel é SSR-safe após V5.7
 
-    // Se a store estiver inicializada e o nível for Nível 2 ou superior, a navegação prossegue.
+    if (process.client && !isAuthorized) {
+        // Token existe, mas nível insuficiente. Redirecionamento CLIENTE.
+        console.warn(`Acesso negado à rota ${to.path}. Nível ${authStore.userLevel} não é suficiente (Requer Nível ${MIN_REQUIRED_LEVEL}). Redirecionando para dashboard.`)
+        return navigateTo('/') 
+    }
+    
+    // 4. Se chegou aqui: Prossiga.
 })

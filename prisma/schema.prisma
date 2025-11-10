@@ -22,25 +22,27 @@ model User {
   sobrenome           String                @db.VarChar(100)
   telefone            String?               @db.VarChar(15)
   email               String                @unique @db.VarChar(100)
-  cotistaId           Int                   @unique
+  cotistaId           Int?                  @unique
   roleId              Int                   @default(1)
   ultimoAcesso        DateTime?
+  ativo               Boolean?              @default(true)
   DepositoPixPendente DepositoPixPendente[]
-  cotista             Cotista               @relation(fields: [cotistaId], references: [id])
+  cotista             Cotista?              @relation(fields: [cotistaId], references: [id], onDelete: Restrict)
   role                RoleLevel             @relation(fields: [roleId], references: [id])
 }
 
 model Cotista {
-  id                  Int                   @id @default(autoincrement())
-  dataCriacao         DateTime              @default(now())
-  fundoId             Int?
-  capitalInicial      Decimal               @db.Decimal(18, 2)
-  aporteMensalPadrao  Decimal               @default(0) @db.Decimal(18, 2)
-  numeroDaConta       String                @unique @db.VarChar(20)
-  fundo               Fundo?                @relation(fields: [fundoId], references: [id], onDelete: Restrict)
-  DepositoPixPendente DepositoPixPendente[]
-  movimentacoes       MovimentacaoCotista[]
-  user                User?
+  id                   Int                    @id @default(autoincrement())
+  dataCriacao          DateTime               @default(now())
+  fundoId              Int?
+  capitalInicial       Decimal                @db.Decimal(18, 2)
+  aporteMensalPadrao   Decimal                @default(0) @db.Decimal(18, 2)
+  numeroDaConta        String                 @unique @db.VarChar(20)
+  fundo                Fundo?                 @relation(fields: [fundoId], references: [id], onDelete: Restrict)
+  DepositoPixPendente  DepositoPixPendente[]
+  movimentacoes        MovimentacaoCotista[]
+  PixCopiaColaEstatico PixCopiaColaEstatico[]
+  user                 User?
 }
 
 model Fundo {
@@ -89,6 +91,19 @@ model DepositoPixPendente {
   User            User?          @relation(fields: [gerenteId], references: [id])
 
   @@index([cotistaId, status])
+}
+
+model PixCopiaColaEstatico {
+  id                   Int       @id @default(autoincrement())
+  codigo               String    @unique @db.VarChar(400)
+  valorInformado       Decimal?  @db.Decimal(18, 2)
+  dataCriacao          DateTime  @default(now())
+  utilizadoEm          DateTime?
+  cotistaQueUtilizouId Int?
+  status               String    @default("PENDENTE") @db.VarChar(20)
+  Cotista              Cotista?  @relation(fields: [cotistaQueUtilizouId], references: [id])
+
+  @@index([status])
 }
 
 enum TipoMovimentacao {

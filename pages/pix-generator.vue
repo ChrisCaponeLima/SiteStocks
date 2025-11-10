@@ -1,19 +1,33 @@
+// /pages/pix-generator.vue - V2.0 - Integração do useAuthStore (Pinia) e envio correto do userId para o backend de reserva de PIX estático.
+// Anteriormente: V1.6 - Atualização do ID fixo do cotista para COTISTA_ID = 5 para testes.
+
 <script setup lang="ts">
-// /pages/pix-generator.vue - V1.6 - Atualização do ID fixo do cotista para COTISTA_ID = 5 para testes.
 import { ref, computed } from 'vue'
+import { useAuthStore } from '~/stores/auth'; // 🛑 NOVO: Importa o store de autenticação
+import { storeToRefs } from 'pinia'; // 🛑 NOVO: Para manter a reatividade
+
+// ➡️ Injeta a instância customizada de ofetch ($api)
+const { $api } = useNuxtApp();
+
+// --------------------------------------------------------------------------------
+// ✅ INTEGRAÇÃO COM AUTH STORE
+// --------------------------------------------------------------------------------
+const authStore = useAuthStore();
+// Obtém o cotistaId e o objeto user (que contém o id do usuário logado) de forma reativa
+const { cotistaId, user } = storeToRefs(authStore);
 
 // V1.1 - CONSTANTES DO RECEBEDOR (Para exibição no frontend)
 const RECEIVER_NAME = 'Christiano Gomes de Lima'
 
-// V1.6 - ID do Cotista Logado (FIXO para simulação)
-// COMENTÁRIO: Alterado de 1 para 5 conforme solicitação.
-const COTISTA_ID = 5 
+// REMOVIDO: const COTISTA_ID = 5 (Agora é obtido dinamicamente)
+// --------------------------------------------------------------------------------
 
 // V1.0 - Variáveis de Estado para o Depósito
 const depositAmount = ref<number | null>(null)
 const pixPayload = ref<string | null>(null)
 const isGenerating = ref(false)
 const errorMessage = ref<string | null>(null)
+const successMessage = ref<string | null>(null) // Adicionado para mensagens de sucesso
 
 // V1.0 - Função de formatação de moeda
 const formatCurrency = (value: number | string | null): string => {
@@ -23,10 +37,21 @@ const formatCurrency = (value: number | string | null): string => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value))
 }
 
-// V1.2 - Lógica de Geração e Persistência do Payload Pix (CHAMADA API)
+// V2.0 - Lógica de Geração e Persistência do Payload Pix (CHAMADA API)
 const generatePixPayload = async () => {
   pixPayload.value = null
   errorMessage.value = null
+  successMessage.value = null
+
+  // 🛑 VERIFICAÇÕES DE PRÉ-REQUISITOS (Cotista e Valor)
+  if (!cotistaId.value || cotistaId.value <= 0) {
+    errorMessage.value = 'Erro de autenticação: ID do cotista não encontrado. Faça login novamente.';
+    return;
+  }
+  if (!user.value?.id) {
+    errorMessage.value = 'Erro de autenticação: ID do usuário logado (Nível 0) não encontrado.';
+    return;
+  }
   
   if (depositAmount.value === null || depositAmount.value <= 0) {
     errorMessage.value = 'Por favor, insira um valor de depósito válido (maior que R$ 0,00).'
@@ -36,16 +61,21 @@ const generatePixPayload = async () => {
   isGenerating.value = true
   
   try {
-    // V1.6 - Chamando agora o endpoint /api/cotista/5/deposito
-    const response = await $fetch(`/api/cotista/${COTISTA_ID}/deposito`, {
+    // Comentário de Alteração:
+    // ANTES: O endpoint usava o ID Fixo (5).
+    // AGORA: Usa o cotistaId.value reativo do Pinia Store.
+    // O body agora inclui o userId (ID do Nível 0 logado), que é crucial para a atualização do PixCopiaColaEstatico.
+    const response = await $api(`/api/cotista/${cotistaId.value}/deposito`, {
         method: 'POST',
         body: {
-            depositAmount: depositAmount.value 
+            depositAmount: depositAmount.value, // Valor escolhido pelo usuário
+           userId: user.value.id // ID do usuário Nível 0 logado (Para PixCopiaColaEstatico)
         }
     })
 
     if (response.pixPayload) {
         pixPayload.value = response.pixPayload
+        successMessage.value = response.message || 'Solicitação de depósito registrada com sucesso.'
         errorMessage.value = null 
     } else {
         throw new Error('O servidor não retornou o Payload Pix após o registro.')
@@ -53,7 +83,9 @@ const generatePixPayload = async () => {
     
   } catch (error: any) {
     console.error('Falha na geração do Pix:', error);
-    errorMessage.value = error.statusMessage || 'Não foi possível gerar e registrar o depósito. Verifique o servidor.';
+    // Captura a mensagem de erro do backend (ex: "Nenhum código PIX disponível no momento.")
+    errorMessage.value = error.response?._data?.statusMessage || error.statusMessage || 'Falha desconhecida ao gerar e registrar o depósito.';
+    successMessage.value = null;
   } finally {
     isGenerating.value = false
   }
@@ -77,18 +109,18 @@ useHead({
 </script>
 
 <template>
-  <div class="max-w-xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 min-h-screen">
-    <header class="text-center">
+    <Header pageTitle="Extrato" class="text-center">
       <h1 class="text-3xl font-extrabold text-blue-900 mb-2">
         Depósito Rápido via Pix
       </h1>
       <p class="text-gray-600">
         Estipule um valor para gerar o QR Code de pagamento e comece a investir na sua segurança!
       </p>
-    </header>
-
+    </Header>
+    <div class="max-w-xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 min-h-screen">
+  
     <section class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 space-y-5">
-      <h2 class="text-xl font-bold text-blue-900">1. Informe o Valor</h2>
+      <h2 class="text-xl font-bold text-blue-900">1. Informe o Valor do Aporte</h2>
       
       <div>
         <label for="deposit-value" class="block text-sm font-medium text-gray-700 mb-2">
@@ -107,7 +139,6 @@ useHead({
         <ClientOnly>
             <p class="mt-1 text-sm text-gray-500">Valor atual: {{ formatCurrency(depositAmount) }}</p>
         </ClientOnly>
-        
       </div>
 
       <button
@@ -121,6 +152,9 @@ useHead({
 
       <div v-if="errorMessage" class="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
         {{ errorMessage }}
+      </div>
+      <div v-if="successMessage && !pixPayload" class="p-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+        {{ successMessage }}
       </div>
     </section>
 
@@ -138,10 +172,10 @@ useHead({
             </div>
 
             <p class="text-sm text-gray-700 font-semibold">
-                Pagador: <span class="text-sm font-extrabold text-blue-700">{{ RECEIVER_NAME }}</span>
+                Recebedor: <span class="text-sm font-extrabold text-blue-700">{{ RECEIVER_NAME }}</span>
             </p>
             <p class="text-sm text-gray-700 font-semibold">
-                Valor a ser pago: <span class="text-lg font-extrabold text-green-600">{{ formatCurrency(depositAmount) }}</span>
+                Valor a ser enviado: <span class="text-lg font-extrabold text-green-600">{{ formatCurrency(depositAmount) }}</span>
             </p>
 
             <div class="mt-6">
@@ -168,6 +202,10 @@ useHead({
             </p>
         </section>
     </ClientOnly>
+  
+    <div v-if="!authStore.isAuthenticated" class="text-center p-4 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded-lg">
+        <p>Aguardando autenticação do usuário para carregar IDs e permitir a geração do PIX.</p>
+    </div>
 
   </div>
 </template>
