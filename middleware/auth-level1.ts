@@ -1,32 +1,21 @@
-// /middleware/auth-level1.ts - V1.3 - CRÍTICO: Substitui 'abortNavigation' por 'navigateTo' no SSR para prevenir redirecionamento silencioso no F5.
-import { useAuthStore } from '~/stores/auth' 
+// /middleware/auth-level1.ts - V2.0
+// Middleware mínimo: somente valida nível no CLIENTE após hidratação.
 
-// 🔑 Nível Mínimo Requerido: 1 (Gerente de Contas)
-const MIN_REQUIRED_LEVEL = 1 
+import { useAuthStore } from '~/stores/auth'
 
-export default defineNuxtRouteMiddleware(async (to, from) => {
+const MIN_REQUIRED_LEVEL = 1
+
+export default defineNuxtRouteMiddleware((to, from) => {
   const authStore = useAuthStore()
-  
-  // 1. CRÍTICO: Garante que a store Pinia inicie a hidratação (lendo o Cookie do token)
-  await authStore.init() 
 
-  // 2. VERIFICAÇÃO INICIAL DE AUTENTICAÇÃO (TOKEN EXISTE NO COOKIE/REF?)
-  if (!authStore.token) {
-    if (process.client) {
-      authStore.logout() 
-      console.warn(`Acesso negado à rota ${to.path}. Token ausente. Redirecionando para login.`)
-      return navigateTo('/login?redirect=' + to.fullPath)
+  if (process.client) {
+    if (!authStore.hasAccess(MIN_REQUIRED_LEVEL)) {
+      console.warn(
+        `Bloqueado: nível mínimo ${MIN_REQUIRED_LEVEL}, atual ${authStore.userLevel}.`
+      )
+      return navigateTo('/')
     }
-    // 🛑 CORREÇÃO CRÍTICA SSR: Redireciona para o login no lado do servidor.
-    return navigateTo('/login?redirect=' + to.fullPath)
   }
-  
-  // 3. VERIFICAÇÃO DE AUTORIZAÇÃO (NÍVEL) - APENAS REDIRECIONAMENTO CLIENTE
-  const isAuthorized = authStore.userLevel >= MIN_REQUIRED_LEVEL
 
-  if (process.client && !isAuthorized) {
-    // Token existe, mas nível insuficiente (lido do localStorage).
-    console.warn(`Acesso negado à rota ${to.path}. Nível ${authStore.userLevel} não é suficiente (Requer Nível ${MIN_REQUIRED_LEVEL}). Redirecionando para dashboard.`)
-    return navigateTo('/') 
-  }
+  // SSR: ignorado porque o layout já faz o gate de autenticação.
 })
