@@ -25,6 +25,7 @@ if (!authStore.isAuthenticated || !authStore.hasAccess(MIN_REQUIRED_LEVEL)) {
 </script>
 
 <template>
+  <Header pageTitle="Manutenção de Usuários" />
  <div class="page-container">
     <AdminUserListTable />
  </div>

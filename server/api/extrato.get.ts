@@ -1,134 +1,105 @@
-// /server/api/extrato.get.ts - V1.6 - CRÍTICO: CORRIGE FALHA DE AUTENTICAÇÃO: Muda a leitura do JWT do Header 'Authorization' (inseguro/vazio) para o Cookie 'auth_token' (HttpOnly).
+// /server/api/extrato.get.ts - V2.2 - CORREÇÃO CRÍTICA: Removida a tag <script setup> injetada incorretamente. Reverte obtenção do cotistaId para QUERY para espelhar a API Summary funcional.
+
 import { defineEventHandler, createError, getQuery, H3Event } from 'h3'
 import { prisma } from '~/server/utils/db' 
-import { verifyToken } from '~/server/utils/auth'
-import { parse as parseCookie } from 'cookie' // 🛑 NOVO: Necessário para extrair o cookie
+// import { verifyToken } from '~/server/utils/auth' // Removido
+// import { parse as parseCookie } from 'cookie' // Removido
 
-// Tipo de dados esperado no token (baseado no arquivo de exemplo fornecido)
+// Tipo de dados esperado, agora lido do contexto do evento (MANTIDO para tipagem, mas não usado diretamente para autenticação)
 interface AuthPayload {
-  userId: number
-  role: string
-  roleLevel: number
-    cotistaId?: number; // 🛑 CORREÇÃO: Adicionado cotistaId que é acessado abaixo
+userId: number
+role: string
+roleLevel: number
+cotistaId?: number; 
 }
 
 // Tipagem para os parâmetros da query
 interface ExtratoQuery {
-  startDate?: string;
-  endDate?: string;
+startDate?: string;
+endDate?: string;
+cotistaId?: string; // ✅ cotistaId na tipagem de query
 }
 
-// 🛑 Nível mínimo exigido para esta rota: Nível 0 (qualquer cotista logado)
-const MIN_LEVEL_REQUIRED = 0; 
-
 export default defineEventHandler(async (event: H3Event) => {
-  // 1. AUTENTICAÇÃO E AUTORIZAÇÃO (Leitura do Cookie HttpOnly)
-  const cookieHeader = event.headers.get('cookie')
-  if (!cookieHeader) {
-    throw createError({ statusCode: 401, statusMessage: 'Não autorizado. Cookie de autenticação não fornecido.' })
+// 1. OBTENÇÃO DO cotistaId (Espelhando a API Summary funcional)
+const query = getQuery<ExtratoQuery>(event)
+const { startDate, endDate } = query;
+const cotistaId = Number(query.cotistaId);
+
+// Garante que o cotistaId é obrigatório.
+if (isNaN(cotistaId) || cotistaId <= 0) {
+ throw createError({ 
+ statusCode: 400, 
+ statusMessage: 'ID do cotista é obrigatório e inválido na requisição.' 
+ });
+}
+
+try {
+ // 2. LÓGICA DE BUSCA DO EXTRATO
+ 
+ // 2.1 Busca o nome do cotista
+ const cotista = await prisma.cotista.findUnique({
+ where: { id: cotistaId },
+ select: { 
+  user: {
+  select: {
+   nome: true
   }
-  
-  // 🛑 NOVO: Extrai o token do cookie string
-  const cookies = parseCookie(cookieHeader)
-  const token = cookies.auth_token // Pega o valor do cookie 'auth_token'
-  
-  if (!token) {
-    throw createError({ statusCode: 401, statusMessage: 'Não autorizado. JWT (auth_token) não encontrado no cookie.' })
   }
-
-  let payload: AuthPayload
-  try {
-    // Verifica e decodifica o token.
-    payload = verifyToken(token) as AuthPayload
-  } catch (e) {
-    // Se o token for inválido/expirado, o erro 401 é lançado aqui.
-    throw createError({ statusCode: 401, statusMessage: 'Token inválido ou expirado.' })
-  }
-
-  // Autorização por Nível. Nível 0 permite acesso a qualquer perfil.
-  const userLevel = payload.roleLevel;
-  if (userLevel < MIN_LEVEL_REQUIRED) { 
-    console.warn(`Acesso negado. Usuário Nível ${userLevel} tentou acessar rota que requer Nível ${MIN_LEVEL_REQUIRED}.`)
-    throw createError({ 
-      statusCode: 403, 
-      statusMessage: `Acesso Proibido. Nível de permissão ${MIN_LEVEL_REQUIRED} requerido. Seu nível é ${userLevel}.` 
-    })
-  }
-  
-  // cotistaId que estamos buscando o extrato
-  const cotistaId = payload.cotistaId || payload.userId; // Ajuste conforme o payload real
-  // 2. OBTENÇÃO DOS PARÂMETROS DE FILTRO (Inalterado)
-  const query = getQuery<ExtratoQuery>(event)
-  const { startDate, endDate } = query;
-
-  try {
-    // 3. LÓGICA DE BUSCA DO EXTRATO
-    
-    // 3.1 Busca o nome do cotista
-    const cotista = await prisma.cotista.findUnique({
-      where: { id: cotistaId },
-      select: { 
-        user: {
-          select: {
-            nome: true
-          }
-        }
-      }
-    });
-    
-    // 🛑 CORREÇÃO ACESSO: O nome agora está em cotista.user.nome
-    const cotistaNome = cotista?.user?.nome || `ID ${cotistaId}`;
-    
-    // 3.2 Monta as condições de filtro de data (Inalterado)
-    const dateFilter: { gte?: Date, lte?: Date } = {};
-    if (startDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0); 
-      dateFilter.gte = start;
-    }
-    if (endDate) {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999); 
-      dateFilter.lte = end;
-    }
-    
-    // 3.3 Busca as movimentações (filtra pelo cotistaId logado) (Inalterado)
-    const extrato = await prisma.movimentacaoCotista.findMany({
-      where: {
-        cotistaId: cotistaId,
-        // Aplica o filtro de data se houver data de início OU fim
-        ...(startDate || endDate ? { dataMovimentacao: dateFilter } : {})
-      },
-      orderBy: {
-        dataMovimentacao: 'asc' // Extrato em ordem cronológica
-      },
-      select: {
-        id: true,
-        dataMovimentacao: true,
-        tipo: true,
-        valor: true,
-      }
-    })
-    
-    // 3.4 Mapeia o resultado para o formato esperado pelo frontend (Inalterado)
-    const mappedExtrato = extrato.map(item => ({
-      id: item.id,
-      data: item.dataMovimentacao.toISOString(), 
-      tipo: item.tipo as 'APORTE' | 'RESGATE' | 'RENDIMENTO',
-      valor: item.valor.toNumber(),
-    }));
+ }
+ });
+ 
+ const cotistaNome = cotista?.user?.nome || `ID ${cotistaId}`;
+ 
+ // 2.2 Monta as condições de filtro de data
+ const dateFilter: { gte?: Date, lte?: Date } = {};
+ if (startDate) {
+ const start = new Date(startDate);
+ start.setHours(0, 0, 0, 0); 
+ dateFilter.gte = start;
+ }
+ if (endDate) {
+ const end = new Date(endDate);
+ end.setHours(23, 59, 59, 999); 
+ dateFilter.lte = end;
+ }
+ 
+ // 2.3 Busca as movimentações (filtra pelo cotistaId da query)
+ const extrato = await prisma.movimentacaoCotista.findMany({
+ where: {
+  cotistaId: cotistaId,
+  ...(startDate || endDate ? { dataMovimentacao: dateFilter } : {})
+ },
+ orderBy: {
+  dataMovimentacao: 'asc' // Extrato em ordem cronológica
+ },
+ select: {
+  id: true,
+  dataMovimentacao: true,
+  tipo: true,
+  valor: true,
+ }
+ })
+ 
+ // 2.4 Mapeia o resultado
+ const mappedExtrato = extrato.map(item => ({
+ id: item.id,
+ data: item.dataMovimentacao.toISOString(), 
+ tipo: item.tipo as 'APORTE' | 'RESGATE' | 'RENDIMENTO',
+ valor: item.valor.toNumber(),
+ }));
 
 
-    return {
-      cotistaNome: cotistaNome,
-      extrato: mappedExtrato
-    }
+ return {
+ cotistaNome: cotistaNome,
+ extrato: mappedExtrato
+ }
 
-  } catch (error: any) {
-    console.error(`Erro ao buscar extrato para Cotista ID ${cotistaId}:`, error)
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Erro interno ao buscar o extrato: ${error.message || 'Detalhe não disponível'}`
-    })
-  } 
+} catch (error: any) {
+ console.error(`Erro ao buscar extrato para Cotista ID ${cotistaId}:`, error)
+ throw createError({
+ statusCode: 500,
+ statusMessage: `Erro interno ao buscar o extrato: ${error.message || 'Detalhe não disponível'}`
+ })
+} 
 })

@@ -1,46 +1,39 @@
-// /nuxt.config.ts - V6.3 - Adição do módulo '@pinia/nuxt' para resolver o erro 'getActivePinia' no plugin de inicialização.
-// Removida a linha "import { defineNuxtConfig from 'nuxt'"
+// /nuxt.config.ts - V6.4 - Adição do suporte a runtimeConfig.public.apiBase para uso dinâmico no plugin 03.api.ts.
 
 export default defineNuxtConfig({
-// ESSENCIAL: Habilitar o SSR
-ssr: true,
+  // ✅ Habilita SSR (essencial para persistência de sessão via cookie)
+  ssr: true,
 
-// Configuração padrão de desenvolvimento
-devtools: { enabled: true },
+  devtools: { enabled: true },
 
-// Caminho para o arquivo CSS de entrada global/Tailwind
-css: [
- '~/assets/css/main.css'
-],
+  // ✅ CSS global
+  css: ['~/assets/css/main.css'],
 
-// Módulos usados no projeto
-modules: [
- '@nuxtjs/tailwindcss',
-    // V6.3 - Adição essencial do módulo Pinia para que useAuthStore funcione
+  // ✅ Módulos utilizados
+  modules: [
+    '@nuxtjs/tailwindcss',
     '@pinia/nuxt',
-  // V6.2 - Adição do módulo 'nuxt-qrcode' (Solução 1 para o gerador de Pix)
-  'nuxt-qrcode'
-],
+    'nuxt-qrcode',
+  ],
 
-// Configuração para disponibilizar variáveis de ambiente no runtime.
-runtimeConfig: {
- // Variável SOMENTE para o Servidor (onde o Prisma roda)
- databaseUrl: process.env.DATABASE_URL, 
- 
- // Configuração pública (acessível no cliente)
- public: {}
-},
+  // ✅ Configurações de runtime
+  runtimeConfig: {
+    // Somente servidor (ex: Prisma)
+    databaseUrl: process.env.DATABASE_URL,
 
-// ----------------------------------------------------------------------
-// ✅ CORREÇÃO PÓS-BUILD: Configuração do Nitro para Externalizar Módulos
-// O pacote 'bcryptjs' é de uso exclusivo do servidor (API endpoints). 
-// Esta configuração impede que o Vite/Nuxt tente empacotá-lo para o cliente,
-// resolvendo o erro "Cannot find package 'bcryptjs'".
-// ----------------------------------------------------------------------
-nitro: {
- externals: {
- external: ['bcryptjs'],
- }
-}
-// ----------------------------------------------------------------------
+    // Configuração pública (acessível no cliente)
+    public: {
+      // 🆕 Base URL dinâmica para $api
+      // Em dev: '/api'
+      // Em prod: pode apontar para um domínio/API externa via variável de ambiente NUXT_PUBLIC_API_BASE
+      apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
+    },
+  },
+
+  // ✅ Nitro - evita empacotamento de libs server-side
+  nitro: {
+    externals: {
+      external: ['bcryptjs'],
+    },
+  },
 });

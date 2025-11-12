@@ -1,4 +1,4 @@
-// /server/api/admin/users/index.get.ts - V1.2 - CRÍTICO: Correção de padronização, regra de segurança e leitura de token (via middleware).
+// /server/api/admin/users/index.get.ts - V1.5 - CORREÇÃO: Robustez na verificação de autenticação para evitar falhas em caso de 'roleLevel' ausente ou inválido.
 
 import { defineEventHandler, getQuery, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma'
@@ -7,49 +7,74 @@ export default defineEventHandler(async (event) => {
     const prisma = usePrisma()
     
     // 1. 🛑 VERIFICAÇÃO DE AUTORIZAÇÃO (MIN_LEVEL = 1)
-    // event.context.user DEVE ser populado pelo /server/middleware/auth.ts lendo o Cookie.
     const currentUser = event.context.user // { id, roleId, roleLevel }
     const MIN_REQUIRED_LEVEL = 1 
+    
+    // Garante que currentUser existe e que roleLevel é um número válido (ou 0 se inválido) antes da comparação.
+    const currentRoleLevel = (currentUser && typeof currentUser.roleLevel === 'number') ? currentUser.roleLevel : 0
 
-    // O erro que você está vendo (403/401) vem daqui porque currentUser está nulo/nível 0 no SSR.
-    if (!currentUser || currentUser.roleLevel < MIN_REQUIRED_LEVEL) { 
+    // Esta verificação é crucial e deve ser mantida, pois esta API é restrita a administradores.
+    if (!currentUser || currentRoleLevel < MIN_REQUIRED_LEVEL) { 
         throw createError({ 
             statusCode: 403, 
-            statusMessage: 'Acesso Proibido. Nível de permissão não atingido.' // Mensagem de erro que estava vindo.
+            statusMessage: 'Acesso Proibido. Nível de permissão não atingido.' 
         })
     }
     
     // 2. Filtros de query
-    // ⚠️ PADRONIZAÇÃO: 'search' e 'levelFilter' usados. 'status' virá como 'ativo' no DB.
     const { search, level: levelFilter, status: statusFilter } = getQuery(event)
 
     // 3. Regra de segurança: Filtro máximo por nível de acesso
     // Administradores só podem listar usuários com nível MENOR que o seu.
-    // Exceção: O Super Admin (Nível 3 ou 99) pode ver todos.
-    const maxLevel = currentUser.roleLevel < 99 ? currentUser.roleLevel : undefined
+    // Exceção: Super Admin (99) pode ver todos.
+    const maxLevel = currentRoleLevel < 99 ? currentRoleLevel : undefined
 
     // 4. Preparação dos argumentos de filtro (where)
-    const whereConditions: any = {
-        // 🔑 REFORÇO: O usuário só pode ver níveis abaixo do seu.
-        // Isso evita que um Nível 1 veja Nível 2. 
-        role: maxLevel ? { is: { level: { lt: maxLevel } } } : undefined,
+    const whereConditions: any = {}
+    
+    // --- 🔑 Lógica de Filtro de Nível de Acesso (Role) ---
+    // Esta lógica garante que a condição de segurança (lt: maxLevel) seja sempre aplicada.
+    
+    const roleLevelConditions: any = {} 
+    
+    // 4.1. Condição de Segurança: Limita o nível máximo (lt: maxLevel)
+    if (maxLevel) {
+        roleLevelConditions.lt = maxLevel 
     }
 
-    // ⚠️ CORREÇÃO: Filtro por Nível de acesso (role.level) do usuário alvo
+    // 4.2. Condição de Query: Filtro por nível específico (equals: requestedLevel)
     if (levelFilter && !isNaN(Number(levelFilter))) {
+        const requestedLevel = Number(levelFilter)
+        
+        // Impedir que um admin filtre por um nível que ele não pode ver (Segurança reforçada)
+        if (maxLevel && requestedLevel >= maxLevel) {
+             throw createError({ 
+                statusCode: 403, 
+                statusMessage: 'Filtro de nível não permitido pela sua permissão.' 
+            })
+        }
+        
+        // Combina o filtro de segurança com o filtro de query.
+        roleLevelConditions.equals = requestedLevel
+    }
+    
+    // 4.3. Aplica a condição de nível (se houver filtros de segurança ou query)
+    if (Object.keys(roleLevelConditions).length > 0) {
+        // 'role' é o nome do relacionamento no Schema 'User', está correto.
         whereConditions.role = {
-            is: { level: Number(levelFilter) }
+            is: { level: roleLevelConditions }
         }
     }
+    // --- FIM NÍVEL DE ACESSO ---
 
-    // ⚠️ CORREÇÃO: Filtro por status (ativo)
+
+    // Filtro por status (ativo) - Lógica mantida e limpa.
     if (statusFilter !== undefined && statusFilter !== '') {
-        // Converte string 'true'/'false' ou 'ATIVO'/'INATIVO' para boolean
         const ativoValue = String(statusFilter).toLowerCase() === 'true' || String(statusFilter).toLowerCase() === 'ativo'
         whereConditions.ativo = ativoValue
     }
     
-    // ⚠️ CORREÇÃO: Filtro de busca (search) combinado (nome, sobrenome, email)
+    // Filtro de busca (search) combinado - Lógica mantida e limpa.
     if (search) {
         const searchString = String(search)
         whereConditions.OR = [
@@ -59,14 +84,6 @@ export default defineEventHandler(async (event) => {
         ]
     }
     
-    // ⚠️ REFORÇO CRÍTICO: Não mostrar usuários de nível IGUAL ou SUPERIOR, exceto Super Admin.
-    if (maxLevel) {
-        whereConditions.role = {
-             is: { level: { lt: maxLevel } } // Filtra estritamente os níveis menores.
-        }
-    }
-
-
     try {
         const users = await prisma.user.findMany({
             where: whereConditions,
@@ -74,16 +91,16 @@ export default defineEventHandler(async (event) => {
                 id: true,
                 cpf: true,
                 nome: true,
-                sobrenome: true, // Incluído sobrenome para padronização
+                sobrenome: true, 
                 email: true,
                 telefone: true,
-                ativo: true, // Usando 'ativo' como nome do campo de status
+                ativo: true, 
                 createdAt: true,
                 roleId: true,
                 role: {
                     select: {
                         name: true,
-                        level: true, // Incluído o level da role
+                        level: true,
                     }
                 }
             },
@@ -93,10 +110,10 @@ export default defineEventHandler(async (event) => {
         // 5. Mapeamento final para o frontend
         const finalUsers = users.map(user => ({
             ...user,
-            // ⚠️ PADRONIZAÇÃO: level/roleLevel deve ser pego de role.level
+            // Padronização: Mantém 'level' e 'roleLevel' por compatibilidade do frontend
             level: user.role.level, 
             roleLevel: user.role.level,
-            // ⚠️ PADRONIZAÇÃO: status convertido para string 'ATIVO'/'INATIVO' para visualização
+            // Padronização: 'status' como string para exibição
             status: user.ativo ? 'ATIVO' : 'INATIVO', 
         }))
 

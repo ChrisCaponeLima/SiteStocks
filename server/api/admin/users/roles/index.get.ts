@@ -1,4 +1,4 @@
-// /server/api/admin/roles/index.get.ts - V1.0 - Lista Roles de Acesso (níveis inferiores ao do usuário logado)
+// /server/api/admin/roles/index.get.ts - V1.2 - CORREÇÃO CRÍTICA: Ajusta o nome da tabela do Prisma para 'roleLevel' conforme o schema fornecido.
 
 import { defineEventHandler, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma'
@@ -6,42 +6,35 @@ import { usePrisma } from '~/server/utils/prisma'
 export default defineEventHandler(async (event) => {
     const prisma = usePrisma()
     
-    // 1. Verificação de Nível de Acesso (MIN_REQUIRED_LEVEL = 1)
-    // Usamos roleId para a verificação, conforme o store: roleLevel: data.roleLevel
-    const currentUser = event.context.user // Dados injetados pelo server middleware
+    // 1. Verificação de Nível de Acesso
+    const currentUser = event.context.user // { id, roleId, roleLevel }
+    const MIN_REQUIRED_LEVEL = 1 
     
-    // 🛑 CRÍTICO: Se o middleware de autenticação do lado do servidor injeta o objeto User,
-    // garantimos que ele tem a propriedade roleId (que mapeia para o nível)
-    if (!currentUser || currentUser.roleId < 1) { 
-        throw createError({ statusCode: 403, statusMessage: 'Acesso Negado. Requer Nível 1 ou superior.' })
+    // Garantimos que roleLevel existe e atinge o nível mínimo.
+    if (!currentUser || typeof currentUser.roleLevel !== 'number' || currentUser.roleLevel < MIN_REQUIRED_LEVEL) { 
+        throw createError({ 
+            statusCode: 403, 
+            statusMessage: 'Acesso Negado. Requer Nível 1 ou superior.' 
+        })
     }
 
-    // 2. Regra de Segurança: O usuário só pode criar (e, portanto, ver) Roles com nível MENOR que o seu.
-    // Buscamos o RoleLevel do usuário logado para obter o valor inteiro (level).
-    let maxLevel = currentUser.roleId; // Valor padrão: usa o roleId (que deve ser o nível, conforme o store)
+    // 2. Regra de Segurança: O usuário só pode gerenciar/criar Roles com nível estritamente MENOR que o seu.
+    const currentUserLevel = currentUser.roleLevel; 
+    
+    // Define o nível máximo que o usuário logado pode gerenciar/criar.
+    // Nível 99 (Super Admin) pode ver todos (lt: 99 + 1), mas o filtro lt: currentUserLevel já funciona.
+    const maxLevel = currentUserLevel
 
     try {
-        const currentUserRole = await prisma.roleLevel.findUnique({
-            where: { id: currentUser.roleId },
-            select: { level: true }
-        })
-
-        if (!currentUserRole) {
-            throw createError({ statusCode: 500, statusMessage: 'Erro interno: Role do usuário logado não encontrada.' })
-        }
-        
-        // Define o nível máximo que o usuário logado pode gerenciar/criar.
-        // Nível 99 (Super Admin) pode criar todos.
-        maxLevel = currentUserRole.level < 99 ? currentUserRole.level : 99 
-
-        // 3. Busca das Roles Disponíveis para Criação
+        // 3. Busca das Roles Disponíveis para Atribuição
+        // 🛑 CORREÇÃO: Usa a tabela RoleLevel conforme o schema.
         const availableRoles = await prisma.roleLevel.findMany({
             where: {
                 // Filtra para garantir que o usuário só possa selecionar níveis abaixo do seu
-                level: { lt: maxLevel }
+                level: { lt: maxLevel } // lt: estritamente menor que o nível do usuário logado
             },
             select: {
-                id: true, // É o roleId que será salvo no User
+                id: true, // Este ID é a FK roleId que será salvo no User
                 name: true,
                 level: true,
             },
@@ -52,9 +45,10 @@ export default defineEventHandler(async (event) => {
 
     } catch (error) {
         console.error('Erro ao listar roles de acesso:', error)
+        
         // Passa erros específicos (como 403) ou erro genérico 500
         if (error.statusCode === 403) {
-            throw error
+            throw error 
         }
         throw createError({ statusCode: 500, statusMessage: 'Falha ao buscar os níveis de acesso disponíveis.' })
     }
