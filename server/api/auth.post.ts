@@ -1,9 +1,16 @@
-// /server/api/auth.post.ts - V2.13 - Inclusão do setCookie(HttpOnly) sem alterar lógica existente
-
+// /server/api/auth.post.ts - V2.15 - Correção: sem top-level await, compatível com ES2019 + bcrypt dinâmico
 import { defineEventHandler, readBody, createError, setCookie } from 'h3'
-import bcrypt from 'bcryptjs'
 import { signToken } from '~/server/utils/auth'
 import { prisma } from '~/server/utils/db'
+
+let bcrypt: any
+;(async () => {
+  try {
+    bcrypt = (await import('bcrypt')).default
+  } catch {
+    bcrypt = (await import('bcryptjs')).default
+  }
+})()
 
 interface LoginBody {
   cpf: string
@@ -15,44 +22,33 @@ export default defineEventHandler(async (event) => {
   const { cpf, password } = body
 
   if (!cpf || !password) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'CPF e senha são obrigatórios.'
-    })
+    throw createError({ statusCode: 400, message: 'CPF e senha são obrigatórios.' })
   }
 
   try {
     const user = await prisma.user.findUnique({
       where: { cpf },
       include: {
-        cotista: {
-          select: {
-            id: true,
-            numeroDaConta: true,
-            dataCriacao: true,
-          }
-        },
-        role: {
-          select: {
-            name: true,
-            level: true
-          }
-        }
+        cotista: { select: { id: true, numeroDaConta: true, dataCriacao: true } },
+        role: { select: { name: true, level: true } },
       },
     })
 
-    // Senha incorreta OU usuário inexistente
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      throw createError({
-        statusCode: 401,
-        statusMessage: 'CPF ou senha inválidos.'
-      })
+    if (!user) {
+      throw createError({ statusCode: 401, message: 'CPF ou senha inválidos.' })
+    }
+
+    if (!bcrypt) {
+      throw createError({ statusCode: 500, message: 'Módulo bcrypt não carregado corretamente.' })
+    }
+
+    const senhaCorreta = await bcrypt.compare(password, user.password)
+    if (!senhaCorreta) {
+      throw createError({ statusCode: 401, message: 'CPF ou senha inválidos.' })
     }
 
     const numeroDaContaString =
-      user.cotista?.numeroDaConta !== null && user.cotista?.numeroDaConta !== undefined
-        ? String(user.cotista.numeroDaConta)
-        : null
+      user.cotista?.numeroDaConta ? String(user.cotista.numeroDaConta) : null
 
     const jwtPayload = {
       userId: user.id,
@@ -64,13 +60,13 @@ export default defineEventHandler(async (event) => {
 
     const token = signToken(jwtPayload)
 
-    // ✅ CRÍTICO: criação do cookie HttpOnly (faltava)
+    // Criação segura do cookie HttpOnly
     setCookie(event, 'auth_token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       path: '/',
-      maxAge: 60 * 60 * 24,
+      maxAge: 60 * 60 * 24, // 1 dia
     })
 
     return {
@@ -87,12 +83,11 @@ export default defineEventHandler(async (event) => {
       numeroDaConta: numeroDaContaString,
       cotistaDataCriacao: user.cotista?.dataCriacao?.toISOString() || null,
     }
-
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erro no login:', error)
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Erro interno do servidor durante o login.',
+      statusCode: error.statusCode || 500,
+      message: error.message || 'Erro interno do servidor durante o login.',
     })
   }
 })

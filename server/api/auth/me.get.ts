@@ -1,53 +1,44 @@
-// /server/api/auth/me.get.ts - V1.0 - Validação real via H3: lê o cookie HttpOnly, valida JWT e retorna dados do usuário no formato da AuthStore.
-import { defineEventHandler, getCookie, setResponseStatus } from 'h3'
+// /server/api/auth/me.get.ts - V2.1 - SSR-safe com retorno consistente
+import { H3Event, setResponseStatus, getHeader } from 'h3'
+import { parse as parseCookie } from 'cookie'
 import { verifyToken } from '~/server/utils/auth'
 import { prisma } from '~/server/utils/db'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event: H3Event) => {
   try {
-    // 1) Lê o token do cookie HttpOnly
-    const token = getCookie(event, 'auth_token')
-
-    if (!token) {
+    const cookieHeader = getHeader(event, 'cookie')
+    if (!cookieHeader) {
       setResponseStatus(event, 401)
       return { user: null, cotistaId: null }
     }
 
-    // 2) Decodifica + valida o token JWT
-    const payload = verifyToken(token)  
-    // payload = { userId, roleLevel, cotistaId }
+    const cookies = parseCookie(cookieHeader)
+    const authToken = cookies.auth_token
+    if (!authToken) {
+      setResponseStatus(event, 401)
+      return { user: null, cotistaId: null }
+    }
 
+    const payload = verifyToken(authToken)
     if (!payload?.userId) {
       setResponseStatus(event, 401)
       return { user: null, cotistaId: null }
     }
 
-    // 3) Busca os dados completos do usuário no banco
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       include: {
-        cotista: {
-          select: {
-            id: true,
-            numeroDaConta: true,
-            dataCriacao: true,
-          },
-        },
-        role: {
-          select: {
-            level: true,
-            name: true,
-          }
-        }
-      }
+        cotista: { select: { id: true, numeroDaConta: true, dataCriacao: true } },
+        role: { select: { name: true, level: true } },
+      },
     })
 
     if (!user) {
-      setResponseStatus(event, 401)
+      setResponseStatus(event, 404)
       return { user: null, cotistaId: null }
     }
 
-    // 4) Formato exato esperado pela AuthStore
+    // ✅ Retorna formato idêntico ao esperado pela store
     return {
       user: {
         id: user.id,
@@ -58,11 +49,10 @@ export default defineEventHandler(async (event) => {
         roleName: user.role?.name ?? 'cotista',
         numeroDaConta: user.cotista?.numeroDaConta ?? null,
       },
-      cotistaId: user.cotista?.id ?? null
+      cotistaId: user.cotista?.id ?? null,
     }
-
-  } catch (err) {
-    console.error('Erro no /api/auth/me:', err)
+  } catch (error) {
+    console.error('Erro crítico no /api/auth/me:', error)
     setResponseStatus(event, 500)
     return { user: null, cotistaId: null }
   }
