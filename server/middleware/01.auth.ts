@@ -1,46 +1,48 @@
-// /server/middleware/01.auth.ts - V1.2 - CORREÇÃO CRÍTICA: Whitelist da rota CRON.
+// /server/middleware/01.auth.ts - V1.3 - WHITELIST ROBUSTO DO CRON
 
-import { defineEventHandler, getHeader, parseCookies } from 'h3'
+import { defineEventHandler, parseCookies } from 'h3'
 import { verifyToken, AuthPayload } from '../utils/auth' 
 
-// --- NECESSÁRIO PARA QUE O TYPESCRIPT FUNCIONE CORRETAMENTE NO LADO DO SERVIDOR ---
+// --- TIPAGEM DO CONTEXTO PARA TYPESCRIPT ---
 declare module 'h3' {
   interface H3EventContext {
     user?: AuthPayload;
   }
 }
-// --- FIM TYPESCRIPT ---
+// --------------------------------------------
 
 export default defineEventHandler(async (event) => {
-  // 1. Define as rotas que não precisam de autenticação (públicas/serviço)
+
+  // 🔐 ROTAS PÚBLICAS (NÃO EXIGEM JWT)
   const publicPaths = [
-        '/api/auth/login', 
-        '/api/auth/register',
-        // ✅ EXCLUSÃO CRÍTICA: Ignora a rota de CRON. A autenticação será feita
-        // dentro do handler process-earnings.post.ts, via chave secreta.
-        '/api/savings/boxes/process-earnings' 
-    ];
+    '/api/auth/login',
+    '/api/auth/register',
+  ];
+
   const path = event.path;
-  
+
+  // 🚨 WHITELIST ROBUSTO DO CRON
+  if (path.includes('process-earnings')) {
+    return; // Não exige cookie JWT
+  }
+
   if (publicPaths.some(p => path.startsWith(p))) {
     return;
   }
-  
-  // 2. 🛑 CORREÇÃO: Lê o token do Cookie 'auth_token'
+
+  // 🔐 AUTENTICAÇÃO POR COOKIE JWT
   const cookies = parseCookies(event);
-  const token = cookies.auth_token; // Assume que o nome do cookie é 'auth_token'
-  
+  const token = cookies.auth_token;
+
   if (token) {
     try {
       const payload: AuthPayload = verifyToken(token);
-      
-      // 3. 🔑 INJEÇÃO CRÍTICA: Anexa o usuário ao contexto do evento
-      event.context.user = payload; 
-      
+
+      // 🔑 Injeta o usuário no contexto
+      event.context.user = payload;
+
     } catch (error) {
-      // Se o token for inválido/expirado, apenas evita injetar o usuário.
-      // A rota protegida (assertAdminPermission) fará o resto (lançar 403).
-      console.warn('Token encontrado no Cookie, mas inválido/expirado para rota protegida.');
+      console.warn('Token no cookie, mas inválido/expirado.');
     }
   }
-})
+});
