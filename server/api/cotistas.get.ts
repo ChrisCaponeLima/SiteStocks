@@ -1,93 +1,132 @@
-// /server/api/cotistas.get.ts - V1.4 - CORREÇÃO FINAL: Implementação de verificação de acesso por NÍVEL (level), usando 'roleLevel' do payload e ajustando o nível mínimo para 2, conforme solicitado pelo cliente.
-import { defineEventHandler, createError, H3Event } from 'h3'
-import { prisma } from '~/server/utils/db' 
+// /server/api/cotistas.get.ts - V2.0
+// 🔒 Refatoração completa: autenticação via Cookie HTTPOnly (sem Authorization header).
+// Padrão oficial de rota protegida (nível mínimo 1 = Admin/Cotista autorizado).
+
+import { defineEventHandler, createError } from 'h3'
+import { prisma } from '~/server/utils/db'
 import { verifyToken } from '~/server/utils/auth'
 
-// Tipo de dados esperado no token
+// -----------------------------------------------------------------------------
+// 1️⃣ Tipos de dados
+// -----------------------------------------------------------------------------
 interface AuthPayload {
-    userId: number
-    role: string // roleName
-    roleLevel: number // Nível de acesso numérico
+  userId: number
+  role: string
+  roleLevel: number
 }
 
-// Tipo de dados de retorno da API
 interface CotistaListItem {
-    id: number;
-    nomeCompleto: string;
-    numeroDaConta: string;
+  id: number
+  nomeCompleto: string
+  numeroDaConta: string
 }
 
-// 🛑 ALTERAÇÃO CRÍTICA V1.4: Nível mínimo exigido para esta rota.
-const MIN_LEVEL_REQUIRED = 1;
+// -----------------------------------------------------------------------------
+// 2️⃣ Constante de acesso mínimo exigido
+// -----------------------------------------------------------------------------
+const MIN_LEVEL_REQUIRED = 1
 
+// -----------------------------------------------------------------------------
+// 3️⃣ Handler principal da rota
+// -----------------------------------------------------------------------------
+export default defineEventHandler(async (event): Promise<CotistaListItem[]> => {
+  // ---------------------------------------------------------------------------
+  // 🔐 ETAPA 1: Autenticação segura via Cookie
+  // ---------------------------------------------------------------------------
 
-export default defineEventHandler(async (event: H3Event): Promise<CotistaListItem[]> => {
-    // 1. AUTENTICAÇÃO E AUTORIZAÇÃO
-    const token = event.headers.get('Authorization')?.split(' ')[1]
+  // ✅ Captura o token do cookie (não via header)
+  const authToken = getCookie(event, 'auth_token')
+  if (!authToken) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Não autorizado. Cookie de autenticação ausente.',
+    })
+  }
 
-    if (!token) {
-        throw createError({ statusCode: 401, statusMessage: 'Não autorizado. Token não fornecido.' })
-    }
+  // ✅ Validação do token JWT
+  let payload: AuthPayload
+  try {
+    payload = verifyToken(authToken) as AuthPayload
+  } catch (err) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Token inválido ou sessão expirada.',
+    })
+  }
 
-    let payload: AuthPayload
-    try {
-        payload = verifyToken(token) as AuthPayload
-    } catch (e) {
-        throw createError({ statusCode: 401, statusMessage: 'Token inválido ou expirado.' })
-    }
+  // ✅ Autorização: exige nível mínimo de acesso
+  const userLevel = payload.roleLevel
+  if (userLevel < MIN_LEVEL_REQUIRED) {
+    console.warn(
+      `[SECURITY] Usuário nível ${userLevel} tentou acessar rota restrita (mínimo ${MIN_LEVEL_REQUIRED}).`
+    )
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Acesso proibido. Nível de permissão insuficiente.',
+    })
+  }
 
-    // Usa o nível do payload diretamente.
-    const userLevel = payload.roleLevel; 
+  // ---------------------------------------------------------------------------
+  // 📊 ETAPA 2: Consulta ao banco de dados
+  // ---------------------------------------------------------------------------
+  try {
+    const cotistasData = await prisma.cotista.findMany({
+      select: {
+        id: true,
+        numeroDaConta: true,
+        user: {
+          select: {
+            nome: true,
+            sobrenome: true,
+          },
+        },
+      },
+      orderBy: {
+        id: 'asc',
+      },
+    })
 
-    // Acesso permitido se o nível do usuário for maior ou igual ao nível mínimo (2).
-    if (userLevel < MIN_LEVEL_REQUIRED) { 
-        console.warn(`Acesso negado. Usuário ${payload.role} (Nível ${userLevel}) tentou acessar rota que requer Nível ${MIN_LEVEL_REQUIRED}.`)
-        throw createError({ 
-            statusCode: 403, 
-            statusMessage: `Acesso Proibido. Nível de permissão ${MIN_LEVEL_REQUIRED} requerido. Seu nível é ${userLevel}.` 
-        })
-    }
+    // -------------------------------------------------------------------------
+    // 🧩 ETAPA 3: Formatação do retorno
+    // -------------------------------------------------------------------------
+    const formattedCotistas: CotistaListItem[] = cotistasData
+      .filter((c) => c.user !== null)
+      .map((c) => ({
+        id: c.id,
+        nomeCompleto: `${c.user!.nome} ${c.user!.sobrenome}`,
+        numeroDaConta: c.numeroDaConta,
+      }))
 
-    // 2. BUSCA NO BANCO DE DADOS
-    try {
-        // ... (lógica inalterada de busca de dados no Prisma)
-        const cotistasData = await prisma.cotista.findMany({
-            select: {
-                id: true,
-                numeroDaConta: true,
-                user: {
-                    select: {
-                        nome: true,
-                        sobrenome: true
-                    }
-                }
-            },
-            orderBy: {
-                id: 'asc'
-            }
-        })
-
-        // 3. FORMATAÇÃO DOS DADOS
-        const formattedCotistas: CotistaListItem[] = cotistasData
-            .filter(c => c.user !== null)
-            .map(cotista => {
-                const nomeCompleto = `${cotista.user!.nome} ${cotista.user!.sobrenome}`
-                
-                return {
-                    id: cotista.id,
-                    nomeCompleto: nomeCompleto,
-                    numeroDaConta: cotista.numeroDaConta,
-                }
-            })
-
-        return formattedCotistas
-
-    } catch (error: any) {
-        console.error('Erro ao buscar lista de cotistas (API):', error)
-        // 4. TRATAMENTO DE ERROS
-        throw createError({
-            statusCode: 500,
-            statusMessage: 'Erro interno ao carregar a lista de cotistas. Verifique o log do servidor.'
-        })
-    }
+    return formattedCotistas
+  } catch (error: any) {
+    console.error('Erro ao buscar lista de cotistas (API):', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage:
+        'Erro interno ao carregar a lista de cotistas. Verifique o log do servidor.',
+    })
+  }
 })
+
+// -----------------------------------------------------------------------------
+// 🧭 GUIA PARA DESENVOLVEDORES
+// -----------------------------------------------------------------------------
+/**
+ * 🔐 PADRÃO DE AUTENTICAÇÃO
+ *  - Sempre use `getCookie(event, 'auth_token')` para obter o JWT.
+ *  - Nunca confie em headers Authorization enviados pelo cliente.
+ *  - Valide com `verifyToken()` e extraia `roleLevel`.
+ *
+ * ⚙️ PADRÃO DE AUTORIZAÇÃO
+ *  - Compare `roleLevel` com o nível mínimo exigido.
+ *  - Se insuficiente → `throw createError({ statusCode: 403 })`
+ *
+ * 💾 PADRÃO DE ERROS
+ *  - 401 → cookie ausente ou token inválido
+ *  - 403 → acesso proibido
+ *  - 500 → falha de banco de dados
+ *
+ * 📘 REPLICAÇÃO
+ *  - Este modelo deve ser usado em todas as rotas protegidas.
+ *  - Ex: /api/usuarios, /api/fundos, /api/movimentacoes etc.
+ */

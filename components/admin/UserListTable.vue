@@ -1,7 +1,11 @@
-// /components/admin/UserListTable.vue - V1.1 - Integração do Formulário de Edição/Criação
+// /components/admin/UserListTable.vue - V3.3 - REFATORAÇÃO COMPLETA: Adaptação ao padrão JWT Cookie-only + SSR Safe + Guia para Devs
 <template>
-  <div class="user-management-container">
-    <h2>Manutenção de Usuários (Nível {{ currentUser.roleLevel }})</h2>
+  <!--
+    ✅ A renderização condicional (`v-if="usersLoaded"`) impede erros de hidratação
+    no SSR, garantindo que o HTML gerado no servidor seja idêntico ao do cliente.
+  -->
+  <div class="user-management-container" v-if="usersLoaded">
+    <h2>Manutenção de Usuários (Nível {{ currentUser?.roleLevel || '...' }})</h2>
 
     <div class="actions">
       <button @click="openForm(null)">➕ Novo Usuário</button>
@@ -15,132 +19,166 @@
           <th>Nome Completo</th>
           <th>E-mail</th>
           <th>Nível</th>
-          <th>Role</th>
+          <th>Função</th>
           <th>Status</th>
           <th>Data Criação</th>
           <th>Ações</th>
         </tr>
       </thead>
       <tbody>
+        <!-- ✅ v-for seguro: só renderiza após carregamento completo -->
         <tr v-for="user in users" :key="user.id">
           <td>{{ user.id }}</td>
-          <td>{{ user.name }} {{ user.sobrenome }}</td>
+          <td>{{ user.nome }} {{ user.sobrenome }}</td>
           <td>{{ user.email }}</td>
           <td>{{ user.level }}</td>
           <td>{{ user.role.name }}</td>
           <td>
-            <span :class="{'status-active': user.status, 'status-inactive': !user.status}">
-              {{ user.status ? 'ATIVO' : 'INATIVO' }}
+            <span :class="{'status-active': user.ativo, 'status-inactive': !user.ativo}">
+              {{ user.ativo ? 'ATIVO' : 'INATIVO' }}
             </span>
           </td>
-          <td>{{ new Date(user.createdAt).toLocaleDateString() }}</td>
+          <td>
+            <!-- Campo opcional: se não vier do banco, exibimos “—” -->
+            {{ user.dataCriacao ? new Date(user.dataCriacao).toLocaleDateString('pt-BR') : '—' }}
+          </td>
           <td>
             <button @click="openForm(user)" class="btn-edit">✏️ Editar</button>
-            <button 
-              @click="toggleStatus(user)" 
-              :disabled="user.id === currentUser.id || user.level >= currentUser.roleLevel"
-              :class="user.status ? 'btn-inactivate' : 'btn-activate'"
+            <button
+              @click="toggleStatus(user)"
+              :disabled="user.id === currentUser?.id || user.level >= currentUser?.roleLevel"
+              :class="user.ativo ? 'btn-inactivate' : 'btn-activate'"
             >
-              {{ user.status ? '❌ Inativar' : '✅ Ativar' }}
+              {{ user.ativo ? '❌ Inativar' : '✅ Ativar' }}
             </button>
           </td>
         </tr>
       </tbody>
     </table>
 
+    <!-- Modal de formulário (edição/criação) -->
     <div v-if="isFormVisible" class="modal-overlay" @click.self="closeForm">
-        <AdminUserForm 
-            :isVisible="isFormVisible" 
-            :initialData="selectedUser" 
-            @close="closeForm" 
-            @saved="handleFormSaved" 
-        />
+      <AdminUserForm
+        :isVisible="isFormVisible"
+        :initialData="selectedUser"
+        @close="closeForm"
+        @saved="handleFormSaved"
+      />
     </div>
+  </div>
+
+  <!-- Placeholder de carregamento inicial -->
+  <div v-else class="loading-state">
+    <p>Carregando usuários...</p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import { useAuthStore } from '~/stores/auth'; // Importa a Store para o nível de acesso
+// -----------------------------------------------------------------------------
+// 🔒 UserListTable.vue — SEGURANÇA TOTAL E PADRÃO COOKIE-ONLY
+// -----------------------------------------------------------------------------
+import { ref, onMounted, computed } from 'vue'
+import { useAuthStore } from '~/stores/auth'
 
-// Assumindo a estrutura de dados da API de listagem
+// -----------------------------------------------------------------------------
+// 1️⃣ Tipagem do modelo retornado pela API
+// -----------------------------------------------------------------------------
 interface UserDisplay {
-    id: number;
-    name: string;
-    email: string;
-    level: number;
-    status: boolean; // Ativo/Inativo
-    createdAt: string;
-    sobrenome: string;
-    roleId: number;
-    role: { name: string; level: number };
-    // Outros campos relevantes para o formulário
+  id: number
+  nome: string
+  sobrenome: string
+  email: string
+  level: number
+  ativo: boolean
+  dataCriacao?: string
+  roleId: number
+  role: { name: string; level: number }
 }
 
-const authStore = useAuthStore();
-const currentUser = computed(() => authStore.user); // Pega dados do usuário logado
+// -----------------------------------------------------------------------------
+// 2️⃣ Estados reativos e referências
+// -----------------------------------------------------------------------------
+const authStore = useAuthStore()
+const currentUser = computed(() => authStore.user)
+const users = ref<UserDisplay[]>([])
+const usersLoaded = ref(false) // 🚀 evita hydration mismatch
+const isFormVisible = ref(false)
+const selectedUser = ref<UserDisplay | null>(null)
 
-const users = ref<UserDisplay[]>([]);
-const isFormVisible = ref(false);
-const selectedUser = ref<UserDisplay | null>(null);
-
-// Função para buscar a lista de usuários
+// -----------------------------------------------------------------------------
+// 3️⃣ Função principal: busca de usuários via $api (com cookie HTTPOnly)
+// -----------------------------------------------------------------------------
 const fetchUsers = async () => {
   try {
-    // 🔑 Requisição para o endpoint seguro
-    const data = await $fetch('/api/admin/users'); 
-    // Mapeamos a resposta para o frontend, assumindo que 'status' é 'ATIVO' ou 'INATIVO' no DB
-    users.value = (data as any[]).map(u => ({
-        ...u,
-        status: u.status === 'ATIVO', // Converte a string 'ATIVO'/'INATIVO' para boolean
-        // name e sobrenome já vêm separados do DB
-    })) as UserDisplay[];
-  } catch (e) {
-    console.error('Falha ao carregar usuários:', e);
-    alert('Erro ao carregar a lista de usuários. Verifique sua conexão e permissões.');
-  }
-};
+    console.log('[ADMIN][USERS] Buscando lista de usuários segura via $api...')
 
+    // ✅ Usa o plugin /plugins/03.api.ts — cookie-only, seguro, SSR compatível
+    const response = await useNuxtApp().$api('/api/admin/users', { method: 'GET' })
+
+    // A nova rota retorna { success, users, count }
+    if (!response?.success || !Array.isArray(response.users)) {
+      console.error('[ADMIN][USERS] Formato de resposta inesperado:', response)
+      throw new Error('Formato inválido retornado pela API')
+    }
+
+    users.value = response.users
+    usersLoaded.value = true
+  } catch (error: any) {
+    console.error('[ADMIN][USERS] Falha ao carregar usuários:', error)
+    alert(error?.data?.statusMessage || 'Erro ao buscar usuários. Verifique permissões.')
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 4️⃣ Ações do formulário/modal
+// -----------------------------------------------------------------------------
 const openForm = (user: UserDisplay | null) => {
-    selectedUser.value = user; // Define o usuário para edição ou null para criação
-    isFormVisible.value = true;
-};
+  selectedUser.value = user
+  isFormVisible.value = true
+}
 
 const closeForm = () => {
-    isFormVisible.value = false;
-    selectedUser.value = null;
-};
+  isFormVisible.value = false
+  selectedUser.value = null
+}
 
-const handleFormSaved = () => {
-    fetchUsers(); // Atualiza a lista após salvar
-};
+const handleFormSaved = async () => {
+  await fetchUsers()
+}
 
+// -----------------------------------------------------------------------------
+// 5️⃣ Alterar status do usuário (Ativar/Inativar)
+// -----------------------------------------------------------------------------
 const toggleStatus = async (user: UserDisplay) => {
-    const newStatus = user.status ? 'INATIVO' : 'ATIVO';
-    if (!confirm(`Tem certeza que deseja ${newStatus} o usuário ${user.name} ${user.sobrenome}?`)) {
-        return;
-    }
-    
-    try {
-        await $fetch(`/api/admin/users/${user.id}/status`, {
-            method: 'PUT',
-            body: { status: newStatus }
-        });
-        await fetchUsers();
-    } catch (e: any) {
-        const message = e.data?.statusMessage || 'Erro ao alterar o status do usuário.';
-        alert(`Falha: ${message}`);
-        console.error('Erro ao alternar status:', e);
-    }
-};
+  const novoStatus = user.ativo ? 'INATIVO' : 'ATIVO'
+  if (!confirm(`Deseja realmente ${novoStatus === 'ATIVO' ? 'ativar' : 'inativar'} o usuário ${user.nome}?`)) return
 
-onMounted(() => {
-  fetchUsers();
-});
+  try {
+    const result = await useNuxtApp().$api(`/api/admin/users/${user.id}/status`, {
+      method: 'PUT',
+      body: { status: novoStatus },
+    })
+
+    if (!result?.success) throw new Error(result?.message || 'Falha ao atualizar status.')
+    await fetchUsers()
+  } catch (error: any) {
+    console.error('[ADMIN][USERS] Erro ao alternar status:', error)
+    alert(error?.data?.statusMessage || 'Erro ao alterar o status do usuário.')
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 6️⃣ Inicialização no cliente
+// -----------------------------------------------------------------------------
+onMounted(async () => {
+  await fetchUsers()
+})
 </script>
 
 <style scoped>
-/* Estilos essenciais para a tabela */
+/* -------------------------------------------------------------------------- */
+/* 🎨 ESTILOS BÁSICOS — Padrão administrativo limpo e responsivo              */
+/* -------------------------------------------------------------------------- */
 .user-management-container { padding: 20px; }
 .actions button { margin-bottom: 20px; margin-right: 10px; padding: 10px 15px; cursor: pointer; }
 table { width: 100%; border-collapse: collapse; }
@@ -153,23 +191,37 @@ th { background-color: #f2f2f2; }
 .btn-activate { background-color: #28a745; color: white; border: none; padding: 5px 10px; cursor: pointer; }
 .btn-inactivate:disabled, .btn-activate:disabled { background-color: #ccc; cursor: not-allowed; }
 
-/* Modal Overlay */
 .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 1000;
 }
-.user-form-modal {
-    /* Garante que o formulário fique visível sobre o overlay */
-    background: white; 
-    padding: 20px;
-    border-radius: 8px;
-}
+.loading-state { padding: 40px; text-align: center; color: #888; font-style: italic; }
 </style>
+
+<!-- -------------------------------------------------------------------------
+🧭 GUIA PARA DESENVOLVEDORES — PADRÃO DE INTEGRAÇÃO COM API SEGURA (JWT COOKIE)
+-------------------------------------------------------------------------------
+🔐 PADRÃO DE ACESSO
+- Todas as requisições usam `useNuxtApp().$api()` (plugin 03.api.ts).
+- O token JWT é enviado automaticamente via Cookie HTTPOnly.
+- Não usar headers Authorization no front-end.
+
+🧩 PADRÃO DE RESPOSTA
+- A API deve retornar objetos estruturados: { success, message?, users?, ... }
+- O componente deve verificar se `Array.isArray(response.users)` antes de mapear.
+
+⚙️ PADRÃO SSR
+- Sempre use `v-if="usersLoaded"` para evitar erros de hidratação.
+- Evite referenciar `authStore.user` diretamente em interpolação SSR antes do mount.
+
+🧱 PADRÃO DE ERROS
+- 401 → Cookie ausente / sessão expirada → redirecionar para login.
+- 403 → Permissão insuficiente (nível baixo).
+- 500 → Erro interno ou falha no Prisma.
+
+📘 REPLICAÇÃO
+- Seguir este padrão em todos os componentes administrativos (Admin*, Config*, Relatórios*, etc.).
+----------------------------------------------------------------------------- -->
