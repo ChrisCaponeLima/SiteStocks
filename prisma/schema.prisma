@@ -111,12 +111,15 @@ model SavingBoxes {
   id                          Int                           @id @default(autoincrement())
   cotistaId                   Int
   name                        String                        @db.VarChar(100)
-  created_at                  DateTime?                     @default(now()) @db.Timestamp(6)
-  updated_at                  DateTime?                     @default(now()) @db.Timestamp(6)
-  ativo                       Boolean?                      @default(true)
-  Cotista                     Cotista                       @relation(fields: [cotistaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  goalValue                   Decimal?                      @db.Decimal(12, 2)
+  created_at                  DateTime                      @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                      @default(now()) @db.Timestamptz(6)
+  ativo                       Boolean                       @default(true)
+  Cotista                     Cotista                       @relation(fields: [cotistaId], references: [id], onUpdate: NoAction, map: "FK_Cotista")
   SavingsBoxesBalanceSnapshot SavingsBoxesBalanceSnapshot[]
   SavingsBoxesMovements       SavingsBoxesMovements[]
+
+  @@index([cotistaId], map: "idx_savingboxes_cotistaid")
 }
 
 model SavingsBoxesBalanceSnapshot {
@@ -124,17 +127,32 @@ model SavingsBoxesBalanceSnapshot {
   boxId         Int
   balance       Decimal     @db.Decimal(12, 2)
   referencedate DateTime    @db.Date
-  SavingBoxes   SavingBoxes @relation(fields: [boxId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  SavingBoxes   SavingBoxes @relation(fields: [boxId], references: [id], onUpdate: NoAction, map: "FK_BoxSnapshot")
+
+  @@index([boxId], map: "idx_snapshot_boxid")
+  @@index([boxId, referencedate], map: "idx_snapshot_boxid_referencedate")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model SavingsBoxesMovements {
-  id          Int         @id @default(autoincrement())
+  id          Int              @id @default(autoincrement())
   boxId       Int
-  amount      Decimal     @db.Decimal(12, 2)
-  type        String      @db.VarChar(20)
-  createdat   DateTime?   @default(now()) @db.Timestamp(6)
-  SavingBoxes SavingBoxes @relation(fields: [boxId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  amount      Decimal          @db.Decimal(12, 2)
+  type        TipoMovimentacao
+  created_at  DateTime         @default(now()) @db.Timestamptz(6)
+  SavingBoxes SavingBoxes      @relation(fields: [boxId], references: [id], onUpdate: NoAction, map: "FK_BoxMovement")
+
+  @@index([boxId], map: "idx_movements_boxid")
+}
+
+model CronJobLog {
+  id         Int      @id @default(autoincrement())
+  jobName    String   @db.VarChar(100)
+  executedAt DateTime @default(now()) @db.Timestamp(6)
+  processed  Int
+  status     String   @db.VarChar(20)
+  message    String?  @db.VarChar(500)
+  createdAt  DateTime @default(now()) @db.Timestamp(6)
 }
 
 enum TipoMovimentacao {
