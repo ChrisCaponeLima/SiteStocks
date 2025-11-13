@@ -1,4 +1,4 @@
-// /server/utils/auth.ts - V2.2 - CRÍTICO: Remoção da importação ACCESS_LEVEL e uso do número puro (2) para o nível ADMIN.
+// /server/utils/auth.ts - V2.3 - FEATURE: Adiciona a função assertAdminPermission para padronização da verificação de nível em rotas Admin.
 import jwt from 'jsonwebtoken';
 import { H3Event, createError, getHeader } from 'h3'; 
 import bcrypt from 'bcryptjs';
@@ -6,12 +6,13 @@ import bcrypt from 'bcryptjs';
 
 // --- CONSTANTES DE NÍVEL DE ACESSO ---
 const ADMIN_LEVEL = 2; // Nível necessário para ignorar a restrição de cotista.
+const MIN_ADMIN_LEVEL = 1; // Nível mínimo para acessar rotas administrativas (listagem de usuários, etc.)
 
 // Tipo de payload JWT
 export interface AuthPayload { // Exportar para uso em outros arquivos
- userId: number;
- roleLevel: number; 
- cotistaId: number | null; 
+userId: number;
+roleLevel: number; 
+cotistaId: number | null; 
 }
 
 // Chave secreta e configurações
@@ -24,14 +25,14 @@ const SALT_ROUNDS = 10;
 * Cria o hash da senha usando BCrypt.
 */
 export async function hashPassword(password: string): Promise<string> {
- return bcrypt.hash(password, SALT_ROUNDS);
+return bcrypt.hash(password, SALT_ROUNDS);
 }
 
 /**
 * Verifica se a senha fornecida corresponde ao hash armazenado.
 */
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
- return bcrypt.compare(password, hash); 
+return bcrypt.compare(password, hash); 
 }
 
 // --- FUNÇÕES JWT (Tokens de Sessão) ---
@@ -42,27 +43,27 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 * @returns O payload decodificado.
 */
 export const verifyToken = (token: string): AuthPayload => {
- try {
-  const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
-  return payload;
- } catch (e) {
-  // Log detalhado apenas em ambiente de desenvolvimento para evitar vazar informações
-  if (process.env.NODE_ENV === 'development') {
-   console.error('Erro de verificação de token:', e);
-  }
-  throw createError({ statusCode: 401, statusMessage: 'Token inválido ou expirado.' });
+try {
+ const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+ return payload;
+} catch (e) {
+ // Log detalhado apenas em ambiente de desenvolvimento para evitar vazar informações
+ if (process.env.NODE_ENV === 'development') {
+ console.error('Erro de verificação de token:', e);
  }
+ throw createError({ statusCode: 401, statusMessage: 'Token inválido ou expirado.' });
+}
 };
 
 /**
 * Cria um novo token JWT.
 */
 export const signToken = (payload: AuthPayload): string => {
- return jwt.sign(
-  payload,
-  JWT_SECRET,
-  { expiresIn: '1d' }
- );
+return jwt.sign(
+ payload,
+ JWT_SECRET,
+ { expiresIn: '1d' }
+);
 };
 
 // --- WRAPPER DE AUTENTICAÇÃO E AUTORIZAÇÃO H3 ---
@@ -78,23 +79,53 @@ export const signToken = (payload: AuthPayload): string => {
 * @throws 403 Forbidden se o usuário não tiver permissão para acessar os dados do cotista solicitado.
 */
 export const authorizeCotista = (event: H3Event, requestedCotistaId: number): AuthPayload => {
-  // 1. Obter o token e verificar (reutiliza verifyToken)
-  const token = getHeader(event, 'Authorization')?.replace('Bearer ', '');
-  if (!token) {
-    throw createError({ statusCode: 401, statusMessage: 'Token de autenticação ausente. Acesso negado.' });
-  }
-  const payload = verifyToken(token); // Esta função já lança 401 se o token for inválido
+ // 1. Obter o token e verificar (reutiliza verifyToken)
+ const token = getHeader(event, 'Authorization')?.replace('Bearer ', '');
+ if (!token) {
+  throw createError({ statusCode: 401, statusMessage: 'Token de autenticação ausente. Acesso negado.' });
+ }
+ const payload = verifyToken(token); // Esta função já lança 401 se o token for inválido
 
-  // 2. Lógica de Autorização
-  // REQUISITO CRÍTICO DE SEGURANÇA: O cotista só pode acessar SEUS PRÓPRIOS dados (a menos que seja Admin)
-  if (
-    // 🛑 CORREÇÃO: Substitui ACCESS_LEVEL.ADMIN pelo número puro 2
-    payload.roleLevel < ADMIN_LEVEL && 
-    payload.cotistaId !== requestedCotistaId
-  ) { 
-    console.warn(`Tentativa de acesso não autorizado ao cotista ${requestedCotistaId} pelo userId ${payload.userId} (cotistaId no token: ${payload.cotistaId}).`);
-    throw createError({ statusCode: 403, statusMessage: 'Acesso Proibido. Você só pode acessar seus próprios dados de cotista.' });
-  }
+ // 2. Lógica de Autorização
+ // REQUISITO CRÍTICO DE SEGURANÇA: O cotista só pode acessar SEUS PRÓPRIOS dados (a menos que seja Admin)
+ if (
+  // Usa a constante ADMIN_LEVEL para manter a consistência
+  payload.roleLevel < ADMIN_LEVEL && 
+  payload.cotistaId !== requestedCotistaId
+ ) { 
+  console.warn(`Tentativa de acesso não autorizado ao cotista ${requestedCotistaId} pelo userId ${payload.userId} (cotistaId no token: ${payload.cotistaId}).`);
+  throw createError({ statusCode: 403, statusMessage: 'Acesso Proibido. Você só pode acessar seus próprios dados de cotista.' });
+ }
 
-  return payload;
+ return payload;
 };
+
+// ==========================================================================================
+// ✅ NOVO: FUNÇÃO DE AUTORIZAÇÃO PARA ROTAS ADMINISTRATIVAS
+// ==========================================================================================
+
+/**
+* Verifica a permissão de um usuário logado para acessar rotas administrativas (mínimo Nível 1).
+* Esta função é a peça central para padronizar a segurança em todos os /server/api/admin/* handlers.
+* @param event O evento H3 da requisição, contendo o usuário no contexto.
+* @param minLevel O nível mínimo de acesso requerido (padrão é 1).
+* @returns O objeto do usuário autenticado e autorizado (AuthPayload).
+* @throws 403 Forbidden se o nível for insuficiente.
+*/
+export const assertAdminPermission = (event: H3Event, minLevel: number = MIN_ADMIN_LEVEL): AuthPayload => {
+const currentUser = event.context.user as AuthPayload | undefined;
+
+// Garante que currentUser existe e que roleLevel é um número válido (ou 0 se inválido) antes da comparação.
+// Usa-se o operador 'as AuthPayload | undefined' pois o middleware de autenticação deve ter injetado isso.
+const currentRoleLevel = (currentUser && typeof currentUser.roleLevel === 'number') ? currentUser.roleLevel : 0
+
+if (!currentUser || currentRoleLevel < minLevel) { 
+  throw createError({ 
+    statusCode: 403, 
+    statusMessage: 'Acesso Proibido. Nível de permissão não atingido.' 
+  })
+}
+
+// Retorna o usuário validado, tipado corretamente.
+return currentUser;
+}

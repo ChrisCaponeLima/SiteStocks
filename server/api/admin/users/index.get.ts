@@ -1,26 +1,17 @@
-// /server/api/admin/users/index.get.ts - V1.5 - CORREÇÃO: Robustez na verificação de autenticação para evitar falhas em caso de 'roleLevel' ausente ou inválido.
+// /server/api/admin/users/index.get.ts - V1.7 - REFACTOR: Aplica o padrão 'assertAdminPermission' para verificar a autorização (Novo Padrão).
 
 import { defineEventHandler, getQuery, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma'
+import { assertAdminPermission } from '~/server/utils/auth' // ✅ Importação do Helper de Segurança
 
 export default defineEventHandler(async (event) => {
     const prisma = usePrisma()
     
-    // 1. 🛑 VERIFICAÇÃO DE AUTORIZAÇÃO (MIN_LEVEL = 1)
-    const currentUser = event.context.user // { id, roleId, roleLevel }
-    const MIN_REQUIRED_LEVEL = 1 
-    
-    // Garante que currentUser existe e que roleLevel é um número válido (ou 0 se inválido) antes da comparação.
-    const currentRoleLevel = (currentUser && typeof currentUser.roleLevel === 'number') ? currentUser.roleLevel : 0
+    // 1. 🛑 VERIFICAÇÃO DE AUTORIZAÇÃO (Padrão)
+    // Se o usuário não tiver MIN_LEVEL (padrão 1), um erro 403 será lançado aqui.
+    const currentUser = assertAdminPermission(event, 1) // Nível 1 é o MIN_REQUIRED_LEVEL
+    const currentRoleLevel = currentUser.roleLevel
 
-    // Esta verificação é crucial e deve ser mantida, pois esta API é restrita a administradores.
-    if (!currentUser || currentRoleLevel < MIN_REQUIRED_LEVEL) { 
-        throw createError({ 
-            statusCode: 403, 
-            statusMessage: 'Acesso Proibido. Nível de permissão não atingido.' 
-        })
-    }
-    
     // 2. Filtros de query
     const { search, level: levelFilter, status: statusFilter } = getQuery(event)
 
@@ -33,8 +24,6 @@ export default defineEventHandler(async (event) => {
     const whereConditions: any = {}
     
     // --- 🔑 Lógica de Filtro de Nível de Acesso (Role) ---
-    // Esta lógica garante que a condição de segurança (lt: maxLevel) seja sempre aplicada.
-    
     const roleLevelConditions: any = {} 
     
     // 4.1. Condição de Segurança: Limita o nível máximo (lt: maxLevel)
@@ -60,7 +49,6 @@ export default defineEventHandler(async (event) => {
     
     // 4.3. Aplica a condição de nível (se houver filtros de segurança ou query)
     if (Object.keys(roleLevelConditions).length > 0) {
-        // 'role' é o nome do relacionamento no Schema 'User', está correto.
         whereConditions.role = {
             is: { level: roleLevelConditions }
         }
@@ -68,13 +56,13 @@ export default defineEventHandler(async (event) => {
     // --- FIM NÍVEL DE ACESSO ---
 
 
-    // Filtro por status (ativo) - Lógica mantida e limpa.
+    // Filtro por status (ativo)
     if (statusFilter !== undefined && statusFilter !== '') {
         const ativoValue = String(statusFilter).toLowerCase() === 'true' || String(statusFilter).toLowerCase() === 'ativo'
         whereConditions.ativo = ativoValue
     }
     
-    // Filtro de busca (search) combinado - Lógica mantida e limpa.
+    // Filtro de busca (search) combinado
     if (search) {
         const searchString = String(search)
         whereConditions.OR = [
@@ -110,15 +98,14 @@ export default defineEventHandler(async (event) => {
         // 5. Mapeamento final para o frontend
         const finalUsers = users.map(user => ({
             ...user,
-            // Padronização: Mantém 'level' e 'roleLevel' por compatibilidade do frontend
             level: user.role.level, 
             roleLevel: user.role.level,
-            // Padronização: 'status' como string para exibição
             status: user.ativo ? 'ATIVO' : 'INATIVO', 
         }))
 
         // 6. 🛑 EXCEÇÃO: Remove o próprio usuário da listagem, independentemente do nível.
-        return finalUsers.filter(user => user.id !== currentUser.id)
+        // Como currentUser é garantido de existir aqui, podemos usá-lo com segurança.
+        return finalUsers.filter(user => user.id !== currentUser.userId) 
 
     } catch (error) {
         console.error('Erro ao listar usuários:', error)

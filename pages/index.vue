@@ -41,7 +41,7 @@ numeroDaConta: 'STOCKS-0000',
 });
 
 // 2. Buscando dados na API
-const { pending, error, data } = useFetch('/api/cotista/summary', {
+const { pending, error, data } = useFetch('cotista/summary', {
 // Busca só é feita se cotistaId > 0 (autenticado)
 lazy: true,
  // 🛑 CORREÇÃO MANTIDA: Usar uma computada simples para o immediate
