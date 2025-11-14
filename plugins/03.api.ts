@@ -1,7 +1,12 @@
-// /plugins/03.api.ts - V2.1 - Correção CRÍTICA: Restabelece o funcionamento SSR com baseURL dinâmica, mantendo autenticação JWT via Cookie-only.
+// /plugins/03.api.ts - V2.4 - ESTÁVEL PARA VERCEL
+// 🔧 Ajustado para:
+// 1. Evitar duplicação /api/api
+// 2. Suportar ambiente SSR na Vercel
+// 3. Usar runtimeConfig corretamente
+// 4. Base URL consistente no server/client
+// 5. Manter arquitetura JWT via Cookie (Authorization no cliente)
 
 import { ofetch } from 'ofetch'
-import type { FetchOptions } from 'ofetch'
 import { useAuthStore } from '~/stores/auth'
 
 declare module '#app' {
@@ -10,31 +15,40 @@ declare module '#app' {
   }
 }
 
-export default defineNuxtPlugin((nuxtApp) => {
-  // ✅ Define baseURL dinâmica conforme ambiente
-  const config = useRuntimeConfig()
-  const baseURL =
-    process.server
-      ? `${config.public.apiBaseServer}/api`
-      : `${config.public.apiBaseClient}/api'}`
+/**
+ * Normaliza baseURL sem duplicar /api
+ */
+function normalizeBase(raw?: string) {
+  if (!raw || raw === '') return '/api'
+  let base = raw.trim().replace(/\/+$/, '')
+  return base
+}
 
-  // 🔧 Criação da instância autenticada de ofetch
+export default defineNuxtPlugin((nuxtApp) => {
+  const config = useRuntimeConfig()
+
+  // ⚠️ Observação importante:
+  // Vercel NÃO monta apiBaseServer/apiBaseClient automaticamente,
+  // por isso padronizamos tudo pelo apiBase.
+  const baseRaw = config.public.apiBase
+  const baseURL = normalizeBase(baseRaw)
+
+  if (process.dev) {
+    console.log(`[API PLUGIN] baseURL: ${baseURL} | server=${process.server}`)
+  }
+
   const apiInstance = ofetch.create({
     baseURL,
 
     async onRequest({ request, options }) {
-      // 🚫 Apenas no cliente adicionamos manualmente o Authorization
       if (process.client) {
         const tokenCookie = useCookie('auth_token')
-        const tokenToUse = tokenCookie.value
+        const token = tokenCookie.value
 
-        console.log(`[API Interceptor] ${request} → Cookie token: ${tokenToUse ? 'presente' : 'ausente'}`)
-
-        if (tokenToUse && options.auth !== false) {
+        if (token && options.auth !== false) {
           options.headers = options.headers || {}
-          ;(options.headers as Record<string, string>).Authorization = `Bearer ${tokenToUse}`
-        } else {
-          console.warn(`[API Interceptor] Token ausente ou auth:false para ${request}`)
+          ;(options.headers as Record<string, string>).Authorization =
+            `Bearer ${token}`
         }
       }
     },
@@ -42,22 +56,21 @@ export default defineNuxtPlugin((nuxtApp) => {
     onResponseError({ request, response, options }) {
       if (process.client) {
         const authStore = useAuthStore()
-        const shouldHandleGlobally = (options as any)._blockResponseError !== true
+        const global = (options as any)?._blockResponseError !== true
 
-        if (response?.status === 401 && authStore.isAuthenticated.value && shouldHandleGlobally) {
-          console.warn(`[API Interceptor] Sessão expirada detectada em ${request}. Fazendo logout.`)
+        if (response?.status === 401 && authStore.isAuthenticated.value && global) {
+          console.warn(`[API] Sessão expirada em ${request}.`)
           authStore.logout()
           navigateTo('/login', { replace: true })
         }
 
-        if (response?.status === 403 && shouldHandleGlobally) {
-          console.error(`[API Interceptor] Acesso proibido em ${request}.`)
+        if (response?.status === 403 && global) {
+          console.error(`[API] Acesso proibido em ${request}`)
         }
       }
     },
   })
 
-  // ✅ Injeta como $api global
   return {
     provide: {
       api: apiInstance,
