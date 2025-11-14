@@ -1,5 +1,4 @@
-// /nuxt.config.ts - V6.4 - Adição do suporte a runtimeConfig.public.apiBase para uso dinâmico no plugin 03.api.ts.
-
+// /nuxt.config.ts - V6.4.1 - Garantias de fallback para apiBaseServer/apiBaseClient
 export default defineNuxtConfig({
   // ✅ Habilita SSR (essencial para persistência de sessão via cookie)
   ssr: true,
@@ -23,12 +22,22 @@ export default defineNuxtConfig({
 
     // Configuração pública (acessível no cliente)
     public: {
-      // 🆕 Base URL dinâmica para $api
-      // Em dev: '/api'
-      // Em prod: pode apontar para um domínio/API externa via variável de ambiente NUXT_PUBLIC_API_BASE
+      /**
+       * apiBase: base pública padrão. Em dev fica '/api'.
+       * Para produção, você pode setar NUXT_PUBLIC_API_BASE (ex: '/api' ou 'https://site-stocks.vercel.app')
+       *
+       * apiBaseServer / apiBaseClient: variáveis opcionais. Se não forem fornecidas,
+       * caem de volta para `apiBase` (evita undefined).
+       */
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
-      apiBaseServer: process.env.NUXT_PUBLIC_API_BASE_SERVER,
-      apiBaseClient: process.env.NUXT_PUBLIC_API_BASE_CLIENT,
+      apiBaseServer:
+        process.env.NUXT_PUBLIC_API_BASE_SERVER ||
+        process.env.NUXT_PUBLIC_API_BASE ||
+        '/api',
+      apiBaseClient:
+        process.env.NUXT_PUBLIC_API_BASE_CLIENT ||
+        process.env.NUXT_PUBLIC_API_BASE ||
+        '/api',
     },
   },
 
