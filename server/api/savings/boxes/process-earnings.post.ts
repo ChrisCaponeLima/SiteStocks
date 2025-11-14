@@ -40,13 +40,9 @@ export default defineEventHandler(async (event) => {
     const submittedSecret = getHeader(event, 'X-Cron-Secret')
 
 
-    // Código Temporário para Depuração
-    console.log('--- DEBUG CRON SECRET ---');
-    console.log('Vercel ENV (CRON_SECRET):', CRON_SECRET);
-    console.log('Submitted Header (X-Cron-Secret):', submittedSecret);
-    console.log('Vercel Length:', CRON_SECRET.length);
-    console.log('Submitted Length:', submittedSecret ? submittedSecret.length : 'N/A');
-    console.log('--- DEBUG CRON SECRET ---');
+    console.log(">> CRON_SECRET:", CRON_SECRET);
+    console.log(">> submittedSecret:", submittedSecret);
+    
 
 
     if (!submittedSecret || submittedSecret !== CRON_SECRET) {
