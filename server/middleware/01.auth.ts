@@ -1,48 +1,43 @@
-// /server/middleware/01.auth.ts - V1.3 - WHITELIST ROBUSTO DO CRON
-
-import { defineEventHandler, parseCookies } from 'h3'
+// /server/middleware/01.auth.ts - V1.3 - FIX: CRON totalmente isolado da autenticação
+import { defineEventHandler, getHeader, parseCookies } from 'h3'
 import { verifyToken, AuthPayload } from '../utils/auth' 
 
-// --- TIPAGEM DO CONTEXTO PARA TYPESCRIPT ---
 declare module 'h3' {
   interface H3EventContext {
     user?: AuthPayload;
   }
 }
-// --------------------------------------------
 
 export default defineEventHandler(async (event) => {
 
-  // 🔐 ROTAS PÚBLICAS (NÃO EXIGEM JWT)
+  const path = event.path;
+
+  // 1️⃣ WHITELIST ABSOLUTO — nenhuma autenticação deve rodar aqui
   const publicPaths = [
     '/api/auth/login',
     '/api/auth/register',
+    '/api/savings/boxes/process-earnings' // <-- ROTA DE CRON
   ];
 
-  const path = event.path;
-
-  // 🚨 WHITELIST ROBUSTO DO CRON
-  if (path.includes('process-earnings')) {
-    return; // Não exige cookie JWT
-  }
-
+  // IMPORTANTE: usar igualdade de prefixo correta
   if (publicPaths.some(p => path.startsWith(p))) {
-    return;
+    return; // ❗ NADA abaixo será executado
   }
 
-  // 🔐 AUTENTICAÇÃO POR COOKIE JWT
+  // 2️⃣ Lê o cookie de autenticação
   const cookies = parseCookies(event);
   const token = cookies.auth_token;
 
-  if (token) {
-    try {
-      const payload: AuthPayload = verifyToken(token);
+  if (!token) {
+    event.context.user = undefined;
+    return; // Deixa as rotas protegidas decidirem (assertAdminPermission)
+  }
 
-      // 🔑 Injeta o usuário no contexto
-      event.context.user = payload;
-
-    } catch (error) {
-      console.warn('Token no cookie, mas inválido/expirado.');
-    }
+  try {
+    const payload = verifyToken(token);
+    event.context.user = payload;
+  } catch (error) {
+    console.warn('[AUTH MIDDLEWARE] Token inválido/expirado.');
+    event.context.user = undefined;
   }
 });
