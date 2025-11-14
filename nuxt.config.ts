@@ -1,41 +1,46 @@
-// /nuxt.config.ts - V6.4 - Adição do suporte a runtimeConfig.public.apiBase para uso dinâmico no plugin 03.api.ts.
-
+// /nuxt.config.ts - V6.4.1 - Garantias de runtimeConfig e fallbacks para NUXT_PUBLIC_API_BASE
 export default defineNuxtConfig({
-  // ✅ Habilita SSR (essencial para persistência de sessão via cookie)
+  // Habilita SSR para preservar cookies HTTPOnly e permitir fetch SSR-safe
   ssr: true,
 
   devtools: { enabled: true },
 
-  // ✅ CSS global
   css: ['~/assets/css/main.css'],
 
-  // ✅ Módulos utilizados
   modules: [
     '@nuxtjs/tailwindcss',
-    '@pinia/nuxt',
+    '@pinia/nuxt', // necessário para useAuthStore funcionar em plugins
     'nuxt-qrcode',
   ],
 
-  // ✅ Configurações de runtime
+  // runtimeConfig: server-only + public
   runtimeConfig: {
-    // Somente servidor (ex: Prisma)
+    // somento servidor (e.g. Prisma)
     databaseUrl: process.env.DATABASE_URL,
 
-    // Configuração pública (acessível no cliente)
     public: {
-      // 🆕 Base URL dinâmica para $api
-      // Em dev: '/api'
-      // Em prod: pode apontar para um domínio/API externa via variável de ambiente NUXT_PUBLIC_API_BASE
+      /**
+       * Para produção: definir a variável NUXT_PUBLIC_API_BASE em Vercel.
+       * Ex: https://api.site-stocks.vercel.app  OR  "/api" (quando front+api mesmo host)
+       *
+       * Observação: mantemos apiBaseServer/apiBaseClient para casos especiais.
+       */
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
-      apiBaseServer: process.env.NUXT_PUBLIC_API_BASE_SERVER,
-      apiBaseClient: process.env.NUXT_PUBLIC_API_BASE_CLIENT,
+      apiBaseServer:
+        process.env.NUXT_PUBLIC_API_BASE_SERVER ||
+        process.env.NUXT_PUBLIC_API_BASE ||
+        '/api',
+      apiBaseClient:
+        process.env.NUXT_PUBLIC_API_BASE_CLIENT ||
+        process.env.NUXT_PUBLIC_API_BASE ||
+        '/api',
     },
   },
 
-  // ✅ Nitro - evita empacotamento de libs server-side
+  // Nitro externals para evitar empacotar libs server-side (ex.: bcrypt)
   nitro: {
     externals: {
       external: ['bcryptjs'],
     },
   },
-});
+})

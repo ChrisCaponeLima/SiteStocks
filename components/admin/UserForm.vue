@@ -1,82 +1,82 @@
-// /components/admin/UserForm.vue - V1.1 - Lógica completa de Criação (POST) e Edição (PUT)
+// /components/admin/UserForm.vue - V1.2 - FIX: Largura do formulário (max-width: 600px) garantida no CSS.
 <template>
-    <div class="user-form-modal">
-        <h3>{{ isEditMode ? 'Editar' : 'Adicionar' }} Usuário (ID: {{ form.id ? form.id : 'Novo' }})</h3>
+  <div class="user-form-modal">
+    <h3>{{ isEditMode ? 'Editar' : 'Adicionar' }} Usuário (ID: {{ form.id ? form.id : 'Novo' }})</h3>
+    
+    <form @submit.prevent="submitForm">
+      <div class="form-section">
+        <h4>Dados Pessoais</h4>
+        <div class="form-group">
+          <label for="nome">Nome:</label>
+          <input type="text" id="nome" v-model="form.nome" required />
+        </div>
         
-        <form @submit.prevent="submitForm">
-            <div class="form-section">
-                <h4>Dados Pessoais</h4>
-                <div class="form-group">
-                    <label for="nome">Nome:</label>
-                    <input type="text" id="nome" v-model="form.nome" required />
-                </div>
-                
-                <div class="form-group">
-                    <label for="sobrenome">Sobrenome:</label>
-                    <input type="text" id="sobrenome" v-model="form.sobrenome" required />
-                </div>
+        <div class="form-group">
+          <label for="sobrenome">Sobrenome:</label>
+          <input type="text" id="sobrenome" v-model="form.sobrenome" required />
+        </div>
 
-                <div class="form-group">
-                    <label for="email">E-mail (Login):</label>
-                    <input type="email" id="email" v-model="form.email" required :disabled="isEditMode" />
-                    <small v-if="isEditMode">O e-mail não pode ser alterado no modo de edição.</small>
-                </div>
+        <div class="form-group">
+          <label for="email">E-mail (Login):</label>
+          <input type="email" id="email" v-model="form.email" required :disabled="isEditMode" />
+          <small v-if="isEditMode">O e-mail não pode ser alterado no modo de edição.</small>
+        </div>
 
-                <div class="form-group">
-                    <label for="cpf">CPF:</label>
-                    <input type="text" id="cpf" v-model="form.cpf" required maxlength="14" /> 
-                </div>
+        <div class="form-group">
+          <label for="cpf">CPF:</label>
+          <input type="text" id="cpf" v-model="form.cpf" required maxlength="14" /> 
+        </div>
 
-                <div class="form-group">
-                    <label for="telefone">Telefone:</label>
-                    <input type="text" id="telefone" v-model="form.telefone" />
-                </div>
-            </div>
+        <div class="form-group">
+          <label for="telefone">Telefone:</label>
+          <input type="text" id="telefone" v-model="form.telefone" />
+        </div>
+      </div>
 
-            <div class="form-section">
-                <h4>Permissões e Segurança</h4>
-                
-                <div class="form-group">
-                    <label for="roleId">Nível de Acesso:</label>
-                    <select id="roleId" v-model="form.roleId" required :disabled="!canChangeRole">
-                        <option disabled :value="null">Selecione um nível</option>
-                        <option v-for="role in availableRoles" :key="role.id" :value="role.id">
-                            {{ role.name }} (Nível {{ role.level }})
-                        </option>
-                    </select>
-                    <small v-if="!canChangeRole">Você só pode gerenciar usuários de nível inferior ao seu.</small>
-                </div>
+      <div class="form-section">
+        <h4>Permissões e Segurança</h4>
+        
+        <div class="form-group">
+          <label for="roleId">Nível de Acesso:</label>
+          <select id="roleId" v-model="form.roleId" required :disabled="!canChangeRole">
+            <option disabled :value="null">Selecione um nível</option>
+            <option v-for="role in availableRoles" :key="role.id" :value="role.id">
+              {{ role.name }} (Nível {{ role.level }})
+            </option>
+          </select>
+          <small v-if="!canChangeRole">Você só pode gerenciar usuários de nível inferior ao seu.</small>
+        </div>
 
-                <div class="form-group">
-                    <label for="password">Senha: <span v-if="!isEditMode">*</span></label>
-                    <input 
-                        type="password" 
-                        id="password" 
-                        v-model="form.password" 
-                        :required="!isEditMode" 
-                    />
-                    <small v-if="isEditMode">Deixe em branco para manter a senha atual.</small>
-                </div>
-                
-                <div class="form-group" v-if="isEditMode">
-                    <label>Status:</label>
-                    <label class="switch">
-                        <input type="checkbox" v-model="form.ativo" :disabled="form.id === currentUser.id">
-                        <span class="slider round"></span>
-                    </label>
-                    <span class="status-label">{{ form.ativo ? 'ATIVO' : 'INATIVO' }}</span>
-                    <small v-if="form.id === currentUser.id">Você não pode inativar a sua própria conta.</small>
-                </div>
-            </div>
+        <div class="form-group">
+          <label for="password">Senha: <span v-if="!isEditMode">*</span></label>
+          <input 
+            type="password" 
+            id="password" 
+            v-model="form.password" 
+            :required="!isEditMode" 
+          />
+          <small v-if="isEditMode">Deixe em branco para manter a senha atual.</small>
+        </div>
+        
+        <div class="form-group" v-if="isEditMode">
+          <label>Status:</label>
+          <label class="switch">
+            <input type="checkbox" v-model="form.ativo" :disabled="form.id === currentUser.id">
+            <span class="slider round"></span>
+          </label>
+          <span class="status-label">{{ form.ativo ? 'ATIVO' : 'INATIVO' }}</span>
+          <small v-if="form.id === currentUser.id">Você não pode inativar a sua própria conta.</small>
+        </div>
+      </div>
 
-            <div class="form-actions">
-                <button type="submit" :disabled="isLoading">
-                    {{ isEditMode ? '💾 Salvar Alterações' : '➕ Criar Usuário' }}
-                </button>
-                <button type="button" @click="emit('close')" :disabled="isLoading">Cancelar</button>
-            </div>
-        </form>
-    </div>
+      <div class="form-actions">
+        <button type="submit" :disabled="isLoading">
+          {{ isEditMode ? '💾 Salvar Alterações' : '➕ Criar Usuário' }}
+        </button>
+        <button type="button" @click="emit('close')" :disabled="isLoading">Cancelar</button>
+      </div>
+    </form>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -85,23 +85,23 @@ import { useAuthStore } from '~/stores/auth'; // Importa a Store para verificar 
 
 // 🛑 Padrão de Nomenclatura e Props
 interface UserFormProps {
-    isVisible: boolean;
-    initialData: any | null;
+  isVisible: boolean;
+  initialData: any | null;
 }
 const props = defineProps<UserFormProps>();
 const emit = defineEmits(['close', 'saved']);
 
 // Tipagem básica para os dados do formulário (compatível com o modelo User do Prisma)
 interface UserFormData {
-    id?: number;
-    cpf: string;
-    nome: string;
-    sobrenome: string;
-    telefone: string | null;
-    email: string;
-    password?: string;
-    roleId: number | null;
-    ativo?: boolean;
+  id?: number;
+  cpf: string;
+  nome: string;
+  sobrenome: string;
+  telefone: string | null;
+  email: string;
+  password?: string;
+  roleId: number | null;
+  ativo?: boolean;
 }
 
 const authStore = useAuthStore();
@@ -111,14 +111,14 @@ const isLoading = ref(false);
 const availableRoles = ref<{ id: number; name: string; level: number }[]>([]);
 
 const initialForm: UserFormData = {
-    cpf: '',
-    nome: '',
-    sobrenome: '',
-    telefone: null,
-    email: '',
-    password: '',
-    roleId: null,
-    ativo: true,
+  cpf: '',
+  nome: '',
+  sobrenome: '',
+  telefone: null,
+  email: '',
+  password: '',
+  roleId: null,
+  ativo: true,
 };
 
 const form = ref<UserFormData>({ ...initialForm });
@@ -130,83 +130,84 @@ const canChangeRole = computed(() => !isEditMode.value || (currentUser.value && 
 
 // 🔑 Função para buscar as roles de acesso permitidas
 const fetchAvailableRoles = async () => {
-    try {
-        // Busca roles que o usuário logado PODE criar (nível inferior)
-        const data = await $fetch('/api/admin/roles'); 
-        availableRoles.value = data as typeof availableRoles.value;
-    } catch (e) {
-        console.error('Erro ao carregar roles de acesso:', e);
-        alert('Erro ao carregar níveis de acesso. Verifique seu nível de permissão.');
-    }
+  try {
+    // Busca roles que o usuário logado PODE criar (nível inferior)
+    const data = await $fetch('/api/admin/roles'); 
+    availableRoles.value = data as typeof availableRoles.value;
+  } catch (e) {
+    console.error('Erro ao carregar roles de acesso:', e);
+    alert('Erro ao carregar níveis de acesso. Verifique seu nível de permissão.');
+  }
 };
 
 // 🔑 Watcher para preencher o formulário no modo edição
 watch(() => props.initialData, (newVal) => {
-    if (newVal) {
-        // Preenche o formulário para edição
-        form.value = {
-            id: newVal.id,
-            cpf: newVal.cpf,
-            nome: newVal.nome,
-            sobrenome: newVal.sobrenome,
-            telefone: newVal.telefone || null,
-            email: newVal.email,
-            password: '', // Senha sempre vazia na edição
-            roleId: newVal.roleId,
-            ativo: newVal.ativo, // Pega o status atual
-        };
-    } else {
-        // Reseta o formulário para criação
-        form.value = { ...initialForm };
-    }
+  if (newVal) {
+    // Preenche o formulário para edição
+    form.value = {
+      id: newVal.id,
+      cpf: newVal.cpf,
+      nome: newVal.nome,
+      sobrenome: newVal.sobrenome,
+      telefone: newVal.telefone || null,
+      email: newVal.email,
+      password: '', // Senha sempre vazia na edição
+      roleId: newVal.roleId,
+      ativo: newVal.ativo, // Pega o status atual
+    };
+  } else {
+    // Reseta o formulário para criação
+    form.value = { ...initialForm };
+  }
 }, { immediate: true });
 
 const submitForm = async () => {
-    if (isLoading.value) return;
+  if (isLoading.value) return;
 
-    // 🛑 Limpa a senha se estiver no modo edição e o campo estiver vazio
-    const payload = { ...form.value };
-    if (isEditMode.value && payload.password === '') {
-        delete payload.password;
+  // 🛑 Limpa a senha se estiver no modo edição e o campo estiver vazio
+  const payload = { ...form.value };
+  if (isEditMode.value && payload.password === '') {
+    delete payload.password;
+  }
+
+  isLoading.value = true;
+  try {
+    if (isEditMode.value) {
+      // 🔑 Edição (PUT)
+      await $fetch(`/api/admin/users/${payload.id}`, { 
+        method: 'PUT', 
+        body: payload 
+      });
+      alert('Usuário atualizado com sucesso!');
+    } else {
+      // 🔑 Criação (POST)
+      await $fetch('/api/admin/users', { 
+        method: 'POST', 
+        body: payload 
+      });
+      alert('Usuário criado com sucesso!');
     }
+    
+    emit('saved'); // Sinaliza que a lista deve ser atualizada
+    emit('close'); // Fecha o modal/formulário
 
-    isLoading.value = true;
-    try {
-        if (isEditMode.value) {
-            // 🔑 Edição (PUT)
-            await $fetch(`/api/admin/users/${payload.id}`, { 
-                method: 'PUT', 
-                body: payload 
-            });
-            alert('Usuário atualizado com sucesso!');
-        } else {
-            // 🔑 Criação (POST)
-            await $fetch('/api/admin/users', { 
-                method: 'POST', 
-                body: payload 
-            });
-            alert('Usuário criado com sucesso!');
-        }
-        
-        emit('saved'); // Sinaliza que a lista deve ser atualizada
-        emit('close'); // Fecha o modal/formulário
-
-    } catch (e: any) {
-        const message = e.data?.statusMessage || 'Erro desconhecido ao processar o usuário.';
-        alert(`Falha: ${message}`);
-        console.error('Erro na submissão do formulário:', e);
-    } finally {
-        isLoading.value = false;
-    }
+  } catch (e: any) {
+    const message = e.data?.statusMessage || 'Erro desconhecido ao processar o usuário.';
+    alert(`Falha: ${message}`);
+    console.error('Erro na submissão do formulário:', e);
+  } finally {
+    isLoading.value = false;
+  }
 };
 
 onMounted(() => {
-    fetchAvailableRoles();
+  fetchAvailableRoles();
 });
 </script>
 
 <style scoped>
 /* Adicione estilos padronizados aqui */
+/* ✅ GARANTIDO: max-width: 600px e centralização do modal */
 .user-form-modal { padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fff; max-width: 600px; margin: 0 auto; }
 .form-section { margin-bottom: 20px; padding: 10px; border: 1px dashed #eee; border-radius: 4px; }
 h4 { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 0; }
