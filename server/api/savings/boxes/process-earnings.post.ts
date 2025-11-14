@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
     // -------------------------------------------------------------------------
     // 🔐 AUTENTICAÇÃO VIA CHAVE
     // -------------------------------------------------------------------------
-    const submittedSecret = getHeader(event, 'x-cron-secret')
+    const submittedSecret = getHeader(event, 'x-cron-secret');
 
     if (!submittedSecret || submittedSecret !== CRON_SECRET) {
       logMessage = 'Chave secreta incorreta.'

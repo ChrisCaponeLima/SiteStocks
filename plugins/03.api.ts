@@ -15,8 +15,8 @@ export default defineNuxtPlugin((nuxtApp) => {
   const config = useRuntimeConfig()
   const baseURL =
     process.server
-      ? `${config.public.apiBaseServer || 'http://localhost:3000'}/api`
-      : `${config.public.apiBaseClient || '/api'}`
+      ? `${config.public.apiBaseServer}/api`
+      : `${config.public.apiBaseClient}/api`
 
   // 🔧 Criação da instância autenticada de ofetch
   const apiInstance = ofetch.create({

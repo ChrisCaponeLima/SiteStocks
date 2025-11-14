@@ -27,6 +27,8 @@ export default defineNuxtConfig({
       // Em dev: '/api'
       // Em prod: pode apontar para um domínio/API externa via variável de ambiente NUXT_PUBLIC_API_BASE
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
+      apiBaseServer: process.env.NUXT_PUBLIC_API_BASE_SERVER,
+      apiBaseClient: process.env.NUXT_PUBLIC_API_BASE_CLIENT,
     },
   },
 
