@@ -1,4 +1,4 @@
-// /components/admin/UserForm.vue - V1.2 - FIX: Largura do formulário (max-width: 600px) garantida no CSS.
+// /components/admin/UserForm.vue - V1.3 - FIX: Adicionado width: 100% ao modal para garantir expansão até o max-width.
 <template>
   <div class="user-form-modal">
     <h3>{{ isEditMode ? 'Editar' : 'Adicionar' }} Usuário (ID: {{ form.id ? form.id : 'Novo' }})</h3>
@@ -207,8 +207,16 @@ onMounted(() => {
 
 <style scoped>
 /* Adicione estilos padronizados aqui */
-/* ✅ GARANTIDO: max-width: 600px e centralização do modal */
-.user-form-modal { padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fff; max-width: 600px; margin: 0 auto; }
+/* ✅ Ajuste: Adicionado width: 100% para ocupar o espaço disponível antes do max-width */
+.user-form-modal { 
+    padding: 20px; 
+    border: 1px solid #ddd; 
+    border-radius: 8px; 
+    background: #fff; 
+    max-width: 600px; 
+    width: 100%; /* <--- AJUSTE APLICADO AQUI */
+    margin: 0 auto; 
+}
 .form-section { margin-bottom: 20px; padding: 10px; border: 1px dashed #eee; border-radius: 4px; }
 h4 { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 0; }
 .form-group { margin-bottom: 15px; }
