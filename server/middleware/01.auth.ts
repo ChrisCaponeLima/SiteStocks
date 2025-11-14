@@ -1,8 +1,9 @@
-// /server/middleware/01.auth.ts - V1.3 - FIX: CRON totalmente isolado da autenticação
-import { defineEventHandler, getHeader, parseCookies } from 'h3'
-import { verifyToken, AuthPayload } from '../utils/auth' 
+// /server/middleware/01.auth.ts - V1.3 - CRON FIX + Cookie JWT + Context User
 
-declare module 'h3' {
+import { defineEventHandler, getHeader, parseCookies } from "h3";
+import { verifyToken, AuthPayload } from "../utils/auth";
+
+declare module "h3" {
   interface H3EventContext {
     user?: AuthPayload;
   }
@@ -10,34 +11,40 @@ declare module 'h3' {
 
 export default defineEventHandler(async (event) => {
 
-  const path = event.path;
+  // ---------------------------------------------------------
+  // ✅ 1. Whitelist da rota CRON (POST)
+  // ---------------------------------------------------------
+  const isCronRoute =
+    event.path === "/api/savings/boxes/process-earnings" &&
+    event.node.req.method === "POST";
 
-  // 1️⃣ WHITELIST ABSOLUTO — nenhuma autenticação deve rodar aqui
-  const publicPaths = [
-    '/api/auth/login',
-    '/api/auth/register',
-    '/api/savings/boxes/process-earnings' // <-- ROTA DE CRON
-  ];
-
-  // IMPORTANTE: usar igualdade de prefixo correta
-  if (publicPaths.some(p => path.startsWith(p))) {
-    return; // ❗ NADA abaixo será executado
+  if (isCronRoute) {
+    return; // O próprio handler faz a autenticação via chave secreta
   }
 
-  // 2️⃣ Lê o cookie de autenticação
+  // ---------------------------------------------------------
+  // 2. ROTAS PÚBLICAS NORMAIS
+  // ---------------------------------------------------------
+  const publicPaths = ["/api/auth/login", "/api/auth/register"];
+  if (publicPaths.some((p) => event.path.startsWith(p))) {
+    return;
+  }
+
+  // ---------------------------------------------------------
+  // 3. Autenticação normal por COOKIE JWT
+  // ---------------------------------------------------------
   const cookies = parseCookies(event);
   const token = cookies.auth_token;
 
   if (!token) {
-    event.context.user = undefined;
-    return; // Deixa as rotas protegidas decidirem (assertAdminPermission)
+    return; // apenas deixa sem contexto.user — rota protegida tratará
   }
 
   try {
     const payload = verifyToken(token);
     event.context.user = payload;
-  } catch (error) {
-    console.warn('[AUTH MIDDLEWARE] Token inválido/expirado.');
-    event.context.user = undefined;
+  } catch (err) {
+    console.warn("[AUTH] Cookie auth_token inválido ou expirado.");
+    // Não lança erro — quem decidirá é a rota administrativa
   }
 });
