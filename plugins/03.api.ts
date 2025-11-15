@@ -1,57 +1,106 @@
-// /plugins/03.api.ts - V2.0 - Plugin ofetch central: baseURL dinâmico, SSR vs client, tratamento 401/403
+// /plugins/03.api.ts - V2.3 - FIX CRÍTICO: Ajuste baseURL para evitar duplicação (/api/api) e suportar NUXT_PUBLIC_API_BASE em produção.
+// Fornece $api (ofetch instance) com comportamento SSR-safe e JWT Cookie-only no cliente.
+// Comentários detalhados abaixo para os devs replicarem em outros plugins.
+
 import { ofetch } from 'ofetch'
 import type { FetchOptions } from 'ofetch'
-import type { NitroFetchRequest, NitroFetchOptions } from 'nitropack'
+import { useAuthStore } from '~/stores/auth'
 
-export type ApiInstance = ReturnType<typeof createApi>
-
-function createApi(base: string) {
-  // cria instância ofetch com baseURL configurável
-  const api = ofetch.create({
-    baseURL: base,
-    credentials: 'include', // importante para enviar cookies HttpOnly
-    // timeout, headers padrão podem ser adicionados aqui
-  })
-
-  // wrapper para lidar com erros e respostas comuns
-  async function request<T = any>(url: string, opts?: FetchOptions) {
-    try {
-      return await api<T>(url, opts as any)
-    } catch (err: any) {
-      // tratamento global de 401/403
-      if (err?.response?.status === 401) {
-        // no cliente, podemos redirecionar para login ou emitir evento
-        // no SSR, deixe o middleware tratar
-        // Exemplo: throw new Error('unauthorized')
-      }
-      throw err
-    }
-  }
-
-  return {
-    raw: api,
-    request,
-    get: <T = any>(url: string, opts?: FetchOptions) => request<T>(url, { method: 'GET', ...opts }),
-    post: <T = any>(url: string, body?: any, opts?: FetchOptions) =>
-      request<T>(url, { method: 'POST', body, ...opts }),
-    put: <T = any>(url: string, body?: any, opts?: FetchOptions) =>
-      request<T>(url, { method: 'PUT', body, ...opts }),
-    delete: <T = any>(url: string, opts?: FetchOptions) =>
-      request<T>(url, { method: 'DELETE', ...opts }),
+declare module '#app' {
+  interface NuxtApp {
+    $api: typeof ofetch
   }
 }
 
+/**
+ * normalizeBase(raw)
+ * - Recebe uma string possivelmente vinda de runtimeConfig.public.apiBase*
+ * - Garante valor padrão '/api' para dev/local
+ * - Remove trailing slash
+ * - NÃO adiciona '/api' automaticamente para evitar '/api/api' duplicado
+ */
+function normalizeBase(raw?: string) {
+  if (!raw || raw === '') return '/api'
+  return raw.trim().replace(/\/+$/, '')
+}
+
 export default defineNuxtPlugin((nuxtApp) => {
-  // Determina base dinamicamente:
-  // - se NUXT_PUBLIC_API_BASE definido, usa isso
-  // - caso contrário, usa '/api' (caminho relativo recomendado para Vercel)
-  const runtimeBase = (process?.env?.NUXT_PUBLIC_API_BASE as string) || '/api'
+  const config = useRuntimeConfig()
 
-  // Em SSR rodando no server, manter base como relativo '/api' evita chamadas externas desnecessárias.
-  // No cliente, base relativa também funciona e resolve para o mesmo domínio do deployment.
-  const api = createApi(runtimeBase)
+  // -------------------------------------------------------
+  // Escolha da base:
+  // - Preferimos uma variável pública única: NUXT_PUBLIC_API_BASE
+  // - Temos fallbacks separados para server / client para deploys complexos
+  // -------------------------------------------------------
+  const publicApiBase = config.public?.apiBase || '/api'
+  const serverFallback = config.public?.apiBaseServer || publicApiBase
+  const clientFallback = config.public?.apiBaseClient || publicApiBase
 
-  // Injetar no contexto Nuxt
-  nuxtApp.provide('api', api)
-  // tipagem: use `const { $api } = useNuxtApp() as { $api: ApiInstance }` quando necessário
+  const chosenRaw = process.server ? serverFallback : clientFallback
+  const baseURL = normalizeBase(chosenRaw)
+
+  // DEBUG: informa a base escolhida (apenas em dev)
+  if (process.dev) {
+    // eslint-disable-next-line no-console
+    console.log(`[API PLUGIN] baseURL configurada -> ${baseURL} (server: ${process.server})`)
+  }
+
+  // Cria instância ofetch
+  const apiInstance = ofetch.create({
+    baseURL, // base já normalizada
+
+    // onRequest: apenas no cliente adiciona Authorization Bearer via cookie (JWT cookie-only flow)
+    async onRequest({ request, options }: { request: Parameters<typeof ofetch>[0]; options: FetchOptions<'json'> }) {
+      if (process.client) {
+        // Observação: o cookie HTTPOnly não é acessível por JS se realmente for HTTPOnly.
+        // Neste projeto usamos cookie com acesso cliente (se necessário). Se cookie for HTTPOnly,
+        // o SSR/server encaminha o cookie automaticamente nas requisições server-side.
+        const tokenCookie = useCookie('auth_token')
+        const tokenToUse = tokenCookie.value
+
+        if (process.dev) {
+          // eslint-disable-next-line no-console
+          console.log(`[API Interceptor] Request: ${request} | token: ${tokenToUse ? 'presente' : 'ausente'}`)
+        }
+
+        // Adiciona Authorization somente se token existir e se options.auth !== false
+        if (tokenToUse && options.auth !== false) {
+          options.headers = options.headers || {}
+          ;(options.headers as Record<string, string>).Authorization = `Bearer ${tokenToUse}`
+        }
+      } else {
+        // No server (SSR), normalmente não adicionamos header Authorization manualmente.
+        // O Nitro/Nuxt encaminhará cookies automaticamente para chamadas server->server se necessário.
+        // Se quiser forçar envio de cookie em SSR manualmente, faça fetch com headers: { cookie: <value> } a partir de um plugin server-side.
+      }
+    },
+
+    // onResponseError: tratamento global (apenas client)
+    onResponseError({ request, response, options }) {
+      if (process.client) {
+        const authStore = useAuthStore()
+        const shouldHandleGlobally = (options as any)?._blockResponseError !== true
+
+        if (response?.status === 401 && authStore.isAuthenticated.value && shouldHandleGlobally) {
+          // sessão expirou -> logout forçado
+          // eslint-disable-next-line no-console
+          console.warn(`[API Interceptor] Sessão expirada detectada em ${request}. Fazendo logout.`)
+          authStore.logout()
+          navigateTo('/login', { replace: true })
+        }
+
+        if (response?.status === 403 && shouldHandleGlobally) {
+          // eslint-disable-next-line no-console
+          console.error(`[API Interceptor] Acesso proibido em ${request}.`)
+        }
+      }
+    },
+  })
+
+  // Fornece a instância como $api
+  return {
+    provide: {
+      api: apiInstance,
+    },
+  }
 })
