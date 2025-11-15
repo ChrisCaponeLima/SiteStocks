@@ -1,17 +1,15 @@
-// /server/api/admin/users/index.post.ts - V1.5 - FIX CRÍTICO: Tratamento robusto dos valores Decimal (capitalInicial e aporteMensalPadrao) para evitar falha no construtor new Decimal().
+// /server/api/admin/users/index.post.ts - V1.6 - FIX: Isolamento da busca da RoleLevel do usuário logado e verificação rigorosa de currentUser.roleId para prevenir falha 500 na transação do Prisma.
 
 import { defineEventHandler, readBody, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma'
 import bcrypt from 'bcryptjs' 
-import { Decimal } from '@prisma/client/runtime/library'; // Importa Decimal para tipagem e uso no Prisma
+import { Decimal } from '@prisma/client/runtime/library'; 
 
 const SALT_ROUNDS = 10 
-const SEQUENCIAL_START = 1007 // Início da sequência de números de conta (STOCKS-1007)
+const SEQUENCIAL_START = 1007 
 
 /**
  * Busca o maior número de conta existente e retorna o próximo sequencial formatado.
- * @param tx O objeto de transação do Prisma.
- * @returns O próximo número de conta no formato "STOCKS-XXXX".
  */
 async function getNextNumeroDaConta(tx: any): Promise<string> {
     const latestCotista = await tx.cotista.findFirst({
@@ -40,19 +38,17 @@ export default defineEventHandler(async (event) => {
     const prisma = usePrisma()
     const body = await readBody(event)
 
-    // 1. Desestruturação e Validação Inicial dos Dados
+    // 1. Desestruturação e Sanitização dos Dados de Entrada
     let { 
         cpf, nome, sobrenome, telefone, email, password, roleId, 
         capitalInicial, aporteMensalPadrao 
     } = body
 
-    // 🔑 FIX: Tratamento robusto para valores numéricos/Decimal. 
-    // Garante que o valor seja 0 se for nulo, undefined ou falhar na conversão.
+    // 🔑 FIX: Tratamento robusto para valores numéricos/Decimal.
     const safeCapitalInicial = (typeof capitalInicial === 'number' && !isNaN(capitalInicial)) ? capitalInicial : 0;
     const safeAporteMensalPadrao = (typeof aporteMensalPadrao === 'number' && !isNaN(aporteMensalPadrao)) ? aporteMensalPadrao : 0;
 
-    // 🔑 Validação: Verifica campos obrigatórios. 
-    // capitalInicial e aporteMensalPadrao não precisam ser verificados aqui, pois já foram "safed" para 0.
+    // Validação de campos obrigatórios do User
     if (!cpf || !nome || !sobrenome || !email || !password || !roleId) {
         throw createError({ 
             statusCode: 400, 
@@ -60,18 +56,23 @@ export default defineEventHandler(async (event) => {
         })
     }
     
-    // FIX: Sanitiza o telefone para NULL se for string vazia
+    // Sanitiza o telefone para NULL se for string vazia
     telefone = telefone && telefone.trim() !== '' ? telefone : null;
 
-    // 2. Verificação de Nível de Acesso (MIN_REQUIRED_LEVEL = 1)
+    // 2. Verificação de Nível de Acesso e Busca do Nível do Usuário Logado (FORA DO TRY/CATCH)
     const currentUser = event.context.user 
-    if (!currentUser || currentUser.roleId < 1) { 
-        throw createError({ statusCode: 403, statusMessage: 'Acesso Negado. Requer Nível 1 ou superior.' })
+    
+    // 🔑 VERIFICAÇÃO CRÍTICA: Garante que currentUser existe e tem um roleId válido.
+    if (!currentUser || typeof currentUser.roleId !== 'number' || currentUser.roleId < 1) { 
+        throw createError({ statusCode: 403, statusMessage: 'Acesso Negado. Credenciais de usuário logado inválidas ou ausentes.' })
     }
+    
+    let currentUserRole;
+    let targetRole;
 
-    // 3. Busca do Nível de Acesso para Validação de Permissão (Regras de Segurança)
     try {
-        const targetRole = await prisma.roleLevel.findUnique({
+        // Busca o nível da Role que o usuário logado está tentando criar
+        targetRole = await prisma.roleLevel.findUnique({
             where: { id: roleId },
             select: { level: true }
         })
@@ -79,12 +80,14 @@ export default defineEventHandler(async (event) => {
         if (!targetRole) {
             throw createError({ statusCode: 404, statusMessage: `Role ID ${roleId} não encontrada.` })
         }
-
-        const currentUserRole = await prisma.roleLevel.findUnique({
+        
+        // Busca o nível do usuário logado (usando o ID já validado)
+        currentUserRole = await prisma.roleLevel.findUnique({
             where: { id: currentUser.roleId },
             select: { level: true }
         })
 
+        // 3. Regras de Segurança: Nível do usuário logado DEVE ser maior que o Nível do usuário que está sendo criado.
         if (!currentUserRole || (currentUserRole.level <= targetRole.level && currentUserRole.level !== 99)) {
             throw createError({ statusCode: 403, statusMessage: 'Você não tem permissão para criar usuários deste nível ou superior.' })
         }
@@ -101,7 +104,6 @@ export default defineEventHandler(async (event) => {
             // 5b. Criação do Registro Cotista
             const createdCotista = await tx.cotista.create({
                 data: {
-                    // Usa os valores "safed" para new Decimal()
                     capitalInicial: new Decimal(safeCapitalInicial), 
                     aporteMensalPadrao: new Decimal(safeAporteMensalPadrao),
                     numeroDaConta: generatedNumeroDaConta, 
@@ -147,10 +149,12 @@ export default defineEventHandler(async (event) => {
             throw createError({ statusCode: 409, statusMessage: `${field} já cadastrado no sistema.` })
         }
         
+        // Relança erros de permissão ou não encontrado
         if (error.statusCode === 403 || error.statusCode === 404) {
              throw error
         }
 
+        // 🔑 Caso o erro 500 persista, ele vem daqui. Sugere outro campo obrigatório faltando.
         throw createError({ statusCode: 500, statusMessage: 'Falha ao criar o usuário e o cotista no banco de dados.' })
     }
 })

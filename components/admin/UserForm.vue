@@ -1,4 +1,4 @@
-// /components/admin/UserForm.vue - V1.6 - FIX: Implementa rolagem interna no modal para garantir que os botões de ação estejam sempre acessíveis, corrigindo problema de UI/UX em telas pequenas.
+// /components/admin/UserForm.vue - V1.7 - FIX: Ajusta o CSS do modal (flex e max-height) para garantir que a rolagem do conteúdo funcione e os botões de ação sejam visíveis.
 <template>
 <div class="user-form-modal">
  <h3>{{ isEditMode ? 'Editar' : 'Adicionar' }} Usuário (ID: {{ form.id ? form.id : 'Novo' }})</h3>
@@ -97,9 +97,8 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted } from 'vue';
-import { useAuthStore } from '~/stores/auth'; // Importa a Store para verificar o nível
+import { useAuthStore } from '~/stores/auth'; 
 
-// 🛑 Padrão de Nomenclatura e Props
 interface UserFormProps {
 isVisible: boolean;
 initialData: any | null;
@@ -107,7 +106,6 @@ initialData: any | null;
 const props = defineProps<UserFormProps>();
 const emit = defineEmits(['close', 'saved']);
 
-// Tipagem básica para os dados do formulário (compatível com o modelo User do Prisma)
 interface UserFormData {
 id?: number;
 cpf: string;
@@ -123,7 +121,7 @@ aporteMensalPadrao?: number;
 }
 
 const authStore = useAuthStore();
-const currentUser = computed(() => authStore.user); // Pega dados do usuário logado
+const currentUser = computed(() => authStore.user); 
 
 const isLoading = ref(false);
 const availableRoles = ref<{ id: number; name: string; level: number }[]>([]);
@@ -147,10 +145,8 @@ const isEditMode = computed(() => !!props.initialData?.id);
 const canChangeRole = computed(() => !isEditMode.value || (currentUser.value && currentUser.value.roleLevel > props.initialData.role.level));
 
 
-// 🔑 Função para buscar as roles de acesso permitidas
 const fetchAvailableRoles = async () => {
 try {
- // Busca roles que o usuário logado PODE criar (nível inferior)
  const data = await $fetch('/api/admin/roles'); 
  availableRoles.value = data as typeof availableRoles.value;
 } catch (e) {
@@ -159,10 +155,8 @@ try {
 }
 };
 
-// 🔑 Watcher para preencher o formulário no modo edição
 watch(() => props.initialData, (newVal) => {
 if (newVal) {
- // Preenche o formulário para edição
  form.value = {
  id: newVal.id,
  cpf: newVal.cpf,
@@ -170,12 +164,11 @@ if (newVal) {
  sobrenome: newVal.sobrenome,
  telefone: newVal.telefone || null,
  email: newVal.email,
- password: '', // Senha sempre vazia na edição
+ password: '', 
  roleId: newVal.roleId,
- ativo: newVal.ativo, // Pega o status atual
+ ativo: newVal.ativo, 
  };
 } else {
- // Reseta o formulário para criação
  form.value = { ...initialForm };
 }
 }, { immediate: true });
@@ -183,7 +176,6 @@ if (newVal) {
 const submitForm = async () => {
 if (isLoading.value) return;
 
-// 🛑 Limpa a senha se estiver no modo edição e o campo estiver vazio
 const payload = { ...form.value };
 if (isEditMode.value && payload.password === '') {
  delete payload.password;
@@ -192,8 +184,6 @@ if (isEditMode.value && payload.password === '') {
 isLoading.value = true;
 try {
  if (isEditMode.value) {
- // 🔑 Edição (PUT)
- // CRITICAL: Remove os campos do Cotista do payload na edição, pois não são esperados pelo PUT.
  delete payload.capitalInicial;
  delete payload.aporteMensalPadrao;
  
@@ -203,9 +193,7 @@ try {
  });
  alert('Usuário atualizado com sucesso!');
  } else {
- // 🔑 Criação (POST)
  // CRITICAL: Garante que os valores de Capital e Aporte são numéricos para o backend
- // O backend (V1.5) já trata null/undefined, mas garantimos o tipo aqui.
  payload.capitalInicial = Number(payload.capitalInicial);
  payload.aporteMensalPadrao = Number(payload.aporteMensalPadrao);
  
@@ -216,8 +204,8 @@ try {
  alert('Usuário criado com sucesso!');
  }
  
- emit('saved'); // Sinaliza que a lista deve ser atualizada
- emit('close'); // Fecha o modal/formulário
+ emit('saved'); 
+ emit('close'); 
 
 } catch (e: any) {
  const message = e.data?.statusMessage || 'Erro desconhecido ao processar o usuário.';
@@ -234,8 +222,7 @@ fetchAvailableRoles();
 </script>
 
 <style scoped>
-/* Adicione estilos padronizados aqui */
-/* ✅ Ajuste: Adicionado width: 100% para ocupar o espaço disponível antes do max-width */
+/* 🔑 FIX UI SCROLL: Aplica display flex no modal e no formulário */
 .user-form-modal { 
  padding: 20px; 
  border: 1px solid #ddd; 
@@ -245,25 +232,24 @@ fetchAvailableRoles();
  width: 100%; 
  margin: 0 auto; 
  
- /* 🔑 FIX UI SCROLL: Define altura máxima e overflow para a rolagem */
- max-height: 90vh; /* Limita a altura do modal a 90% da altura da tela */
+ /* FIX: Garante altura máxima na tela e ativa o modelo flex para gerenciar o scroll */
+ max-height: 90vh; 
  display: flex;
  flex-direction: column;
 }
 
-/* 🔑 NOVO ESTILO: Container para o conteúdo que deve rolar */
-.form-content-scroll {
- overflow-y: auto; /* Permite rolagem vertical */
- padding-right: 15px; /* Espaço para a barra de rolagem não sobrepor o conteúdo */
- margin-right: -15px; /* Move a barra de rolagem para fora do padding */
- flex-grow: 1; /* Permite que o conteúdo expanda e use o espaço restante */
-}
-
-/* Ajusta a margem do formulário para o novo layout */
 form {
  display: flex;
  flex-direction: column;
- flex-grow: 1;
+ flex-grow: 1; /* Permite que o formulário ocupe o espaço restante do modal */
+}
+
+/* 🔑 Container para o conteúdo que deve rolar */
+.form-content-scroll {
+ overflow-y: auto; /* FIX: Permite rolagem vertical */
+ padding-right: 15px; 
+ margin-right: -15px; 
+ flex-grow: 1; /* Permite que o conteúdo rolável se expanda */
 }
 
 .form-section { margin-bottom: 20px; padding: 10px; border: 1px dashed #eee; border-radius: 4px; }
@@ -271,7 +257,8 @@ h4 { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 0; }
 .form-group { margin-bottom: 15px; }
 label { display: block; margin-bottom: 5px; font-weight: bold; }
 input:not([type="checkbox"]), select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-.form-actions { margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; flex-shrink: 0; /* Impede que os botões diminuam */ }
+/* 🔑 FIX: Garante que as ações fiquem no final do modal e não sejam roladas */
+.form-actions { margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; flex-shrink: 0; } 
 .form-actions button { margin-right: 10px; padding: 10px 15px; cursor: pointer; border: none; border-radius: 4px; }
 .form-actions button:first-child { background-color: #007bff; color: white; }
 .form-actions button:disabled { background-color: #ccc; cursor: not-allowed; }
