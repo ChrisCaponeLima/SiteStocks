@@ -1,4 +1,4 @@
-// /pages/admin/gerar-rendimentos.vue - V11.0 - Alinhamento com arquitetura JWT Cookie-only + SSR-safe fetch + documentação detalhada
+// /pages/admin/gerar-rendimentos.vue - V11.1 - Correção da População do Select de Cotistas (Verificação robusta do array de resposta da API)
 <script setup lang="ts">
 /**
  * 🔒 Este componente foi totalmente adaptado para a nova arquitetura segura baseada em JWT Cookie-only.
@@ -24,6 +24,12 @@ interface CotistaApiItem {
   numeroDaConta: string
 }
 
+interface CotistaLocalItem {
+  id: number
+  nome: string // Mapeado de nomeCompleto
+  conta: string // Mapeado de numeroDaConta
+}
+
 const authStore = useAuthStore()
 const selectedCotistaId = ref<number | null>(null)
 const taxaRendimento = ref(0.04)
@@ -44,19 +50,28 @@ const generatedMovements = ref<any[]>([])
  * - Evitar chamadas duplicadas no client (watch: false).
  */
 const { data: cotistasData, pending: isFetchingCotistas, error: cotistasError } =
-  await useAsyncData('cotistas-list', async () => {
+  await useAsyncData<CotistaLocalItem[]>('cotistas-list', async () => {
     const nuxtApp = useNuxtApp()
+    
+    // 💡 Tipagem da resposta da API
     const response = await nuxtApp.$api<CotistaApiItem[]>('/cotistas', {
       method: 'GET',
       credentials: 'include', // 🧷 Garante envio do cookie JWT
     })
-    return (
-      response?.map((c) => ({
-        id: c.id,
-        nome: c.nomeCompleto,
-        conta: c.numeroDaConta,
-      })) || []
-    )
+
+    // 💡 Correção: Verificação robusta para garantir que a resposta é um array válido
+    if (!Array.isArray(response)) {
+      console.error('API /cotistas retornou um formato inválido:', response)
+      // Força um erro para que cotistasError seja acionado
+      throw new Error("Resposta da API de cotistas não é uma lista válida.");
+    }
+    
+    // Mapeamento de CotistaApiItem para CotistaLocalItem
+    return response.map((c) => ({
+      id: c.id,
+      nome: c.nomeCompleto,
+      conta: c.numeroDaConta,
+    }))
   })
 
 const cotistas = computed(() => cotistasData.value || [])
@@ -158,12 +173,10 @@ const DIA_LANCAMENTO = 23
       Administração de Lançamentos de Rendimento (Customizado)
     </h1>
 
-    <!-- ⚙️ FORMULÁRIO PRINCIPAL -->
     <div class="bg-white p-6 rounded-lg shadow-md mb-6">
       <h2 class="text-xl font-semibold mb-4">Parâmetros de Geração</h2>
 
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <!-- 🧩 Seletor de cotista -->
         <div class="md:col-span-1">
           <label class="block text-sm font-medium text-gray-700 mb-1">Cotista</label>
           <select
@@ -182,7 +195,6 @@ const DIA_LANCAMENTO = 23
           </p>
         </div>
 
-        <!-- 🧮 Taxa -->
         <div class="md:col-span-1">
           <label class="block text-sm font-medium text-gray-700 mb-1">Taxa Mensal (Decimal)</label>
           <input
@@ -196,7 +208,6 @@ const DIA_LANCAMENTO = 23
           />
         </div>
 
-        <!-- 📅 Período -->
         <div class="md:col-span-1">
           <label class="block text-sm font-medium text-gray-700 mb-1">Mês Inicial</label>
           <input v-model="dataInicio" type="date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" />
@@ -208,7 +219,6 @@ const DIA_LANCAMENTO = 23
         </div>
       </div>
 
-      <!-- 🚀 Botão -->
       <button
         @click="gerarRendimentos"
         :disabled="!canSubmit"
@@ -222,7 +232,6 @@ const DIA_LANCAMENTO = 23
       </button>
     </div>
 
-    <!-- 🧾 Mensagens de retorno -->
     <div
       v-if="message"
       :class="[
@@ -236,7 +245,6 @@ const DIA_LANCAMENTO = 23
       <p>{{ message }}</p>
     </div>
 
-    <!-- 📋 Tabela de lançamentos -->
     <div v-if="generatedMovements.length > 0" class="bg-white p-6 rounded-lg shadow-md">
       <h2 class="text-xl font-semibold mb-4">
         Lançamentos Criados ({{ generatedMovements.length }})
