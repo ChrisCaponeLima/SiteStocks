@@ -1,10 +1,11 @@
-// /components/admin/UserForm.vue - V1.7 - FIX: Ajusta o CSS do modal (flex e max-height) para garantir que a rolagem do conteúdo funcione e os botões de ação sejam visíveis.
+// /components/admin/UserForm.vue - V1.8 - FIX: Ajuste final do CSS do modal (flex e min-height) para garantir que o scroll do conteúdo funcione corretamente, mantendo os botões visíveis.
 <template>
 <div class="user-form-modal">
  <h3>{{ isEditMode ? 'Editar' : 'Adicionar' }} Usuário (ID: {{ form.id ? form.id : 'Novo' }})</h3>
  
  <form @submit.prevent="submitForm">
- <div class="form-content-scroll">   
+ <div class="form-content-scroll"> 
+  
   <div class="form-section">
    <h4>Dados Pessoais</h4>
    <div class="form-group">
@@ -193,7 +194,7 @@ try {
  });
  alert('Usuário atualizado com sucesso!');
  } else {
- // CRITICAL: Garante que os valores de Capital e Aporte são numéricos para o backend
+ // Garante que os valores de Capital e Aporte são numéricos para o backend
  payload.capitalInicial = Number(payload.capitalInicial);
  payload.aporteMensalPadrao = Number(payload.aporteMensalPadrao);
  
@@ -222,7 +223,7 @@ fetchAvailableRoles();
 </script>
 
 <style scoped>
-/* 🔑 FIX UI SCROLL: Aplica display flex no modal e no formulário */
+/* 🔑 FIX UI SCROLL: Define o modal com altura máxima e layout flex para que o conteúdo rolável funcione */
 .user-form-modal { 
  padding: 20px; 
  border: 1px solid #ddd; 
@@ -232,7 +233,7 @@ fetchAvailableRoles();
  width: 100%; 
  margin: 0 auto; 
  
- /* FIX: Garante altura máxima na tela e ativa o modelo flex para gerenciar o scroll */
+ /* FIX: Garante altura máxima na tela */
  max-height: 90vh; 
  display: flex;
  flex-direction: column;
@@ -241,15 +242,19 @@ fetchAvailableRoles();
 form {
  display: flex;
  flex-direction: column;
- flex-grow: 1; /* Permite que o formulário ocupe o espaço restante do modal */
+ flex-grow: 1; 
+ /* 🔑 FIX: Adiciona min-height: 0 para evitar que o conteúdo interno force o formulário a ser maior que o container */
+ min-height: 0; 
 }
 
 /* 🔑 Container para o conteúdo que deve rolar */
 .form-content-scroll {
- overflow-y: auto; /* FIX: Permite rolagem vertical */
+ overflow-y: auto; 
  padding-right: 15px; 
  margin-right: -15px; 
- flex-grow: 1; /* Permite que o conteúdo rolável se expanda */
+ flex-grow: 1; 
+ /* 🔑 FIX: Adiciona min-height: 0 para evitar que o conteúdo interno force o form-content-scroll a ser maior que o container */
+ min-height: 0; 
 }
 
 .form-section { margin-bottom: 20px; padding: 10px; border: 1px dashed #eee; border-radius: 4px; }
@@ -257,7 +262,7 @@ h4 { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 0; }
 .form-group { margin-bottom: 15px; }
 label { display: block; margin-bottom: 5px; font-weight: bold; }
 input:not([type="checkbox"]), select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-/* 🔑 FIX: Garante que as ações fiquem no final do modal e não sejam roladas */
+/* Garante que as ações fiquem no final do modal e não sejam roladas */
 .form-actions { margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; flex-shrink: 0; } 
 .form-actions button { margin-right: 10px; padding: 10px 15px; cursor: pointer; border: none; border-radius: 4px; }
 .form-actions button:first-child { background-color: #007bff; color: white; }
