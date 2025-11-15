@@ -1,4 +1,5 @@
-// /components/admin/UserListTable.vue - V3.5 - FEATURE: Adiciona a coluna 'Último Login'
+// /components/admin/UserListTable.vue - V3.6 - FIX CRÍTICO: ReferenceError 'fetchUsers is not defined' no onMounted. A função foi garantida no escopo correto do script setup.
+
 <template>
  <div class="user-management-container" v-if="usersLoaded">
  <h2>Manutenção de Usuários (Nível {{ currentUser?.roleLevel || '...' }})</h2>
@@ -94,20 +95,89 @@ email: string
 level: number
 ativo: boolean
 dataCriacao?: string
-  ultimoAcesso?: string | null // 🔑 NOVO CAMPO: Corresponde ao ultimoAcesso no Prisma
+  ultimoAcesso?: string | null // Manter a tipagem atualizada da V3.5
 roleId: number
 role: { name: string; level: number }
 }
 
 // -----------------------------------------------------------------------------
 // 2️⃣ Estados reativos e referências
-// ... (restante do script)
+// -----------------------------------------------------------------------------
+const authStore = useAuthStore()
+const currentUser = computed(() => authStore.user)
+const users = ref<UserDisplay[]>([])
+const usersLoaded = ref(false) // 🚀 evita hydration mismatch
+const isFormVisible = ref(false)
+const selectedUser = ref<UserDisplay | null>(null)
+
+// -----------------------------------------------------------------------------
+// 3️⃣ Função principal: busca de usuários via $api (com cookie HTTPOnly)
+// -----------------------------------------------------------------------------
+const fetchUsers = async () => { // 🔑 FIX: Definição mantida no escopo principal do script setup
+try {
+ console.log('[ADMIN][USERS] Buscando lista de usuários segura via $api...')
+
+ // ✅ Usa o plugin /plugins/03.api.ts — cookie-only, seguro, SSR compatível
+ const response = await useNuxtApp().$api('/admin/users', { method: 'GET' })
+
+ // A nova rota retorna { success, users, count }
+ if (!response?.success || !Array.isArray(response.users)) {
+ console.error('[ADMIN][USERS] Formato de resposta inesperado:', response)
+ throw new Error('Formato inválido retornado pela API')
+ }
+
+ users.value = response.users as UserDisplay[] // Garante a tipagem correta
+ usersLoaded.value = true
+} catch (error: any) {
+ console.error('[ADMIN][USERS] Falha ao carregar usuários:', error)
+ alert(error?.data?.statusMessage || 'Erro ao buscar usuários. Verifique permissões.')
+}
+}
+
+// -----------------------------------------------------------------------------
+// 4️⃣ Ações do formulário/modal
+// -----------------------------------------------------------------------------
+const openForm = (user: UserDisplay | null) => {
+selectedUser.value = user
+isFormVisible.value = true
+}
+
+const closeForm = () => {
+isFormVisible.value = false
+selectedUser.value = null
+}
+
+const handleFormSaved = async () => {
+await fetchUsers()
+}
+
+// -----------------------------------------------------------------------------
+// 5️⃣ Alterar status do usuário (Ativar/Inativar)
+// -----------------------------------------------------------------------------
+const toggleStatus = async (user: UserDisplay) => {
+const novoStatus = user.ativo ? 'INATIVO' : 'ATIVO'
+if (!confirm(`Deseja realmente ${novoStatus === 'ATIVO' ? 'ativar' : 'inativar'} o usuário ${user.nome}?`)) return
+
+try {
+ const result = await useNuxtApp().$api(`/admin/users/${user.id}/status`, {
+ method: 'PUT',
+ body: { status: novoStatus },
+ })
+
+ if (!result?.success) throw new Error(result?.message || 'Falha ao atualizar status.')
+ await fetchUsers()
+} catch (error: any) {
+ console.error('[ADMIN][USERS] Erro ao alternar status:', error)
+ alert(error?.data?.statusMessage || 'Erro ao alterar o status do usuário.')
+}
+}
 
 // -----------------------------------------------------------------------------
 // 6️⃣ Inicialização no cliente
 // -----------------------------------------------------------------------------
 onMounted(async () => {
-await fetchUsers()
+// 🔑 A chamada funciona, pois fetchUsers está no escopo correto.
+await fetchUsers() 
 })
 </script>
 
@@ -115,21 +185,85 @@ await fetchUsers()
 /* -------------------------------------------------------------------------- */
 /* 🎨 ESTILOS AJUSTADOS PARA USABILIDADE E PADRÃO       */
 /* -------------------------------------------------------------------------- */
-/* ... (restante do estilo) */
+.user-management-container { padding: 20px; }
+.actions button { margin-bottom: 20px; margin-right: 10px; padding: 10px 15px; cursor: pointer; }
+
+/* ✅ 1. CONTAINER DE ROLAGEM HORIZONTAL */
+.table-scroll-wrapper {
+  overflow-x: auto;
+  width: 100%;
+}
 
 /* ✅ 2. AUMENTO DE LARGURA DAS CÉLULAS E IMPEDIR QUEBRA */
 table { 
   width: 100%; 
   border-collapse: collapse; 
-  /* Aumenta a largura mínima da tabela para acomodar a nova coluna */
+  /* Largura mínima ajustada para nova coluna 'Último Login' */
   min-width: 1250px; 
 }
 
-/* ... (restante do estilo) */
+/* ✅ 3. INTERCALAR CORES DAS LINHAS */
+table tbody tr:nth-child(even) {
+  background-color: #f9f9f9; /* Linhas pares */
+}
+
+th, td { 
+  border: 1px solid #ddd; 
+  padding: 10px; 
+  text-align: left; 
+  /* Impede que o conteúdo da célula quebre linha, garantindo a largura total */
+  white-space: nowrap; 
+}
+th { background-color: #f2f2f2; }
+.status-active { color: green; font-weight: bold; }
+.status-inactive { color: red; font-weight: bold; }
+
+
+/* ✅ 4. ESTILOS DE ÍCONES (Botões sem legenda) */
+.action-icon {
+  /* Transforma o botão em um ícone compacto */
+  padding: 5px; 
+  width: 30px; 
+  height: 30px;
+  font-size: 1.2em; /* Tamanho do emoji/ícone */
+  line-height: 1;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s;
+  /* Removendo a margem direita original do btn-edit */
+  margin-right: 5px; 
+}
+
+.action-icon:hover:not([disabled]) {
+  opacity: 0.8;
+}
+
+/* Aplicando as cores de fundo e texto aos novos botões de ícone */
+.btn-edit { background-color: #ffc107; color: black; border: none; }
+.btn-inactivate { background-color: #dc3545; color: white; border: none; }
+.btn-activate { background-color: #28a745; color: white; border: none; }
+
+/* Estilo para ícones desabilitados */
+.btn-inactivate:disabled, .btn-activate:disabled, .action-icon[disabled] { 
+  background-color: #ccc; 
+  cursor: not-allowed; 
+}
+
+
+.modal-overlay {
+position: fixed; top: 0; left: 0;
+width: 100%; height: 100%;
+background: rgba(0, 0, 0, 0.5);
+display: flex; justify-content: center; align-items: center;
+z-index: 1000;
+}
+.loading-state { padding: 40px; text-align: center; color: #888; font-style: italic; }
 
 /* Estilos específicos para a nova coluna (opcional) */
 .col-last-login { 
     width: 120px; 
-    font-size: 0.9em; /* Formato de data e hora costuma ser menor */
+    font-size: 0.9em; 
 }
 </style>
