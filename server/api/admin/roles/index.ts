@@ -1,9 +1,14 @@
-// /server/api/admin/roles/get.ts - V1.6 - CORREÇÃO DE MAPPING: Conteúdo do handler movido para 'get.ts' (em vez de index.get.ts) para forçar o Nuxt a registrar a rota e resolver o erro 404.
+// /server/api/admin/roles/index.ts - V1.7 - CORREÇÃO DE MAPPING: Handler renomeado para 'index.ts' (em vez de get.ts) para robustecer o mapeamento da rota aninhada.
 
 import { defineEventHandler, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma' // Assumindo que este caminho está correto
 
 export default defineEventHandler(async (event) => {
+    // 💡 Verifica o método HTTP. Como o arquivo é 'index.ts', ele responde a todos os métodos.
+    if (event.method !== 'GET') {
+        throw createError({ statusCode: 405, statusMessage: 'Method Not Allowed' })
+    }
+
     const prisma = usePrisma()
     
     // 1. Verificação de Nível de Acesso (Assumimos que event.context.user é preenchido pelo middleware de Auth)
@@ -54,10 +59,3 @@ export default defineEventHandler(async (event) => {
         })
     }
 })
-
-// model RoleLevel {
-//  id  Int  @id @default(autoincrement())
-//  name String @unique @db.VarChar(50)
-//  level Int  @unique
-//  users User[]
-// }
