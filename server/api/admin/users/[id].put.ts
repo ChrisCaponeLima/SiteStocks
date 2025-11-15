@@ -1,4 +1,4 @@
-// /server/api/admin/users/[id].put.ts - V1.0 - Edição de Usuário (Nível 1+)
+// /server/api/admin/users/[id].put.ts - V1.1 - FIX: Tratamento mais robusto de dados opcionais (telefone e roleId) e melhor sanitização do payload.
 
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma'
@@ -22,13 +22,19 @@ export default defineEventHandler(async (event) => {
     }
 
     // 2. Desestruturação e Preparação dos Dados
-    const { 
+    let { 
         cpf, nome, sobrenome, telefone, email, password, roleId, ativo
     } = body
 
     // 🛑 CRÍTICO: Não permitir que o próprio usuário edite seus dados de segurança/nível por esta rota administrativa.
     if (targetId === currentUser.id) {
-        throw createError({ statusCode: 403, statusMessage: 'Você não pode editar suas próprias permissões ou nível de acesso através desta rota.' })
+        // Permite editar dados pessoais, mas bloqueia segurança e nível
+        if (typeof roleId !== 'undefined' && roleId !== currentUser.roleId) {
+            throw createError({ statusCode: 403, statusMessage: 'Você não pode alterar seu próprio roleId.' })
+        }
+        if (typeof ativo !== 'undefined' && ativo === false) {
+             throw createError({ statusCode: 403, statusMessage: 'Você não pode inativar a sua própria conta.' })
+        }
     }
 
     // 3. Busca dos Níveis e Regras de Segurança
@@ -58,6 +64,8 @@ export default defineEventHandler(async (event) => {
             where: { id: targetUser.roleId },
             select: { level: true }
         })
+
+        // Nível 99 (Super Admin) pode editar todos, exceto ele mesmo.
         if (targetRoleLevel && currentUserRole.level <= targetRoleLevel.level && currentUserRole.level !== 99) {
             throw createError({ statusCode: 403, statusMessage: 'Você não tem permissão para editar usuários deste nível ou superior.' })
         }
@@ -79,23 +87,28 @@ export default defineEventHandler(async (event) => {
             cpf, 
             nome, 
             sobrenome, 
-            telefone, 
-            email, 
+            email, // Email é obrigatório, mas não deve ser alterado pelo frontend (disabled)
             roleId,
             ativo
         }
 
+        // 💡 FIX: Sanitiza o telefone. Armazena NULL se for uma string vazia, senão armazena o valor.
+        dataToUpdate.telefone = telefone && telefone.trim() !== '' ? telefone : null;
+
         // 5. Hashing da Nova Senha (se fornecida)
         if (password && password.length > 0) {
             dataToUpdate.password = await bcrypt.hash(password, SALT_ROUNDS)
-        } else {
-            // Remove a senha do objeto de update se estiver vazia para não sobrescrever com null/vazio
-            delete dataToUpdate.password
-        }
+        } 
+        // Não é necessário um 'else' aqui, pois se password for undefined (removido no frontend) ou string vazia, ele não será adicionado/modificado no objeto.
         
-        // Remove undefined/nulls do corpo da requisição que não devem ser gravados
-        Object.keys(dataToUpdate).forEach(key => dataToUpdate[key] === undefined && delete dataToUpdate[key])
-
+        // Remove undefined/nulls (exceto telefone se for null intencional)
+        Object.keys(dataToUpdate).forEach(key => {
+            // Remove se for undefined (como password vazio) ou se for nulo, mas não telefone
+            if (dataToUpdate[key] === undefined || (dataToUpdate[key] === null && key !== 'telefone')) {
+                 delete dataToUpdate[key]
+            }
+        })
+        
         // 6. Execução do Update
         const updatedUser = await prisma.user.update({
             where: { id: targetId },
@@ -114,7 +127,7 @@ export default defineEventHandler(async (event) => {
     } catch (error: any) {
         console.error('Erro ao editar usuário:', error)
         
-        // Trata erro de duplicidade de CPF ou E-mail (Unique Constraint)
+        // Trata erro de duplicidade de CPF ou E-mail (Unique Constraint - P2002)
         if (error.code === 'P2002') {
             const field = error.meta?.target.includes('cpf') ? 'CPF' : 'E-mail'
             throw createError({ statusCode: 409, statusMessage: `${field} já cadastrado no sistema para outro usuário.` })
@@ -125,6 +138,7 @@ export default defineEventHandler(async (event) => {
              throw error
         }
 
+        // 🛑 Retorna o erro 500 com a mensagem de falha ao banco de dados
         throw createError({ statusCode: 500, statusMessage: 'Falha ao atualizar o usuário no banco de dados.' })
     }
 })
