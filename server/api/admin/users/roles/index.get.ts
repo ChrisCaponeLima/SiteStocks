@@ -1,4 +1,4 @@
-// /server/api/admin/roles/index.get.ts - V1.4 - REVISÃO: Nenhuma alteração lógica. Confirma a sintaxe correta do handler e da importação para evitar erros de compilação que resultam em 404.
+// /server/api/admin/roles/index.get.ts - V1.5 - REVISÃO CRÍTICA: Confirma a sintaxe correta do handler e da importação. É essencial que o servidor Nuxt seja REINICIADO após esta confirmação para que o mapeamento da rota 404 seja corrigido.
 
 import { defineEventHandler, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma' // Assumindo que este caminho está correto
@@ -54,10 +54,10 @@ export default defineEventHandler(async (event) => {
         })
     }
 })
-// O modelo Prisma não está sendo alterado, apenas repetido aqui para contexto.
+
 // model RoleLevel {
-//   id    Int    @id @default(autoincrement())
-//   name  String @unique @db.VarChar(50)
-//   level Int    @unique
-//   users User[]
+//  id  Int  @id @default(autoincrement())
+//  name String @unique @db.VarChar(50)
+//  level Int  @unique
+//  users User[]
 // }
