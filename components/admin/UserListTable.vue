@@ -1,16 +1,8 @@
-// /components/admin/UserListTable.vue - V3.6 - FIX CRÍTICO: ReferenceError 'fetchUsers is not defined' no onMounted. A função foi garantida no escopo correto do script setup.
+// /components/admin/UserListTable.vue - V3.7 - FIX CRÍTICO: TypeError: 'timeStyle' é inválido para toLocaleDateString(). Trocado para toLocaleString() para suportar formatação de data e hora.
 
 <template>
  <div class="user-management-container" v-if="usersLoaded">
- <h2>Manutenção de Usuários (Nível {{ currentUser?.roleLevel || '...' }})</h2>
-
- <div class="actions">
- <button @click="openForm(null)">➕ Novo Usuário</button>
- <button @click="fetchUsers">🔄 Atualizar Lista</button>
- </div>
-
-  <div class="table-scroll-wrapper">
-  
+      <div class="table-scroll-wrapper">
     <table>
   <thead>
    <tr>
@@ -21,7 +13,8 @@
    <th class="col-role">Função</th>
    <th class="col-status">Status</th>
    <th class="col-creation-date">Data Criação</th>
-        <th class="col-last-login">Último Login</th>    <th class="col-actions">Ações</th>
+        <th class="col-last-login">Último Login</th> 
+   <th class="col-actions">Ações</th>
    </tr>
   </thead>
   <tbody>
@@ -39,7 +32,8 @@
    <td class="col-creation-date">
         {{ user.dataCriacao ? new Date(user.dataCriacao).toLocaleDateString('pt-BR') : '—' }}
    </td>
-        <td class="col-last-login"> {{ user.ultimoAcesso ? new Date(user.ultimoAcesso).toLocaleDateString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca' }}
+        <td class="col-last-login">
+            {{ user.ultimoAcesso ? new Date(user.ultimoAcesso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca' }}
         </td>
    <td class="col-actions">
             <button 
@@ -95,7 +89,7 @@ email: string
 level: number
 ativo: boolean
 dataCriacao?: string
-  ultimoAcesso?: string | null // Manter a tipagem atualizada da V3.5
+  ultimoAcesso?: string | null 
 roleId: number
 role: { name: string; level: number }
 }
@@ -106,14 +100,14 @@ role: { name: string; level: number }
 const authStore = useAuthStore()
 const currentUser = computed(() => authStore.user)
 const users = ref<UserDisplay[]>([])
-const usersLoaded = ref(false) // 🚀 evita hydration mismatch
+const usersLoaded = ref(false) 
 const isFormVisible = ref(false)
 const selectedUser = ref<UserDisplay | null>(null)
 
 // -----------------------------------------------------------------------------
 // 3️⃣ Função principal: busca de usuários via $api (com cookie HTTPOnly)
 // -----------------------------------------------------------------------------
-const fetchUsers = async () => { // 🔑 FIX: Definição mantida no escopo principal do script setup
+const fetchUsers = async () => { 
 try {
  console.log('[ADMIN][USERS] Buscando lista de usuários segura via $api...')
 
@@ -126,7 +120,7 @@ try {
  throw new Error('Formato inválido retornado pela API')
  }
 
- users.value = response.users as UserDisplay[] // Garante a tipagem correta
+ users.value = response.users as UserDisplay[] 
  usersLoaded.value = true
 } catch (error: any) {
  console.error('[ADMIN][USERS] Falha ao carregar usuários:', error)
@@ -176,7 +170,6 @@ try {
 // 6️⃣ Inicialização no cliente
 // -----------------------------------------------------------------------------
 onMounted(async () => {
-// 🔑 A chamada funciona, pois fetchUsers está no escopo correto.
 await fetchUsers() 
 })
 </script>
