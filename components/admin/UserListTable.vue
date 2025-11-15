@@ -114,7 +114,7 @@ const fetchUsers = async () => {
   console.log('[ADMIN][USERS] Buscando lista de usuários segura via $api...')
 
   // ✅ Usa o plugin /plugins/03.api.ts — cookie-only, seguro, SSR compatível
-  const response = await useNuxtApp().$api('/api/admin/users', { method: 'GET' })
+  const response = await useNuxtApp().$api('/admin/users', { method: 'GET' })
 
   // A nova rota retorna { success, users, count }
   if (!response?.success || !Array.isArray(response.users)) {
@@ -155,7 +155,7 @@ const toggleStatus = async (user: UserDisplay) => {
  if (!confirm(`Deseja realmente ${novoStatus === 'ATIVO' ? 'ativar' : 'inativar'} o usuário ${user.nome}?`)) return
 
  try {
-  const result = await useNuxtApp().$api(`/api/admin/users/${user.id}/status`, {
+  const result = await useNuxtApp().$api(`/admin/users/${user.id}/status`, {
    method: 'PUT',
    body: { status: novoStatus },
   })
