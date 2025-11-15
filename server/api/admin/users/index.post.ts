@@ -1,4 +1,4 @@
-// /server/api/admin/users/index.post.ts - V1.4 - CRIAÇÃO: Transação atômica para criar Cotista (com número de conta sequencial) e User ligado.
+// /server/api/admin/users/index.post.ts - V1.5 - FIX CRÍTICO: Tratamento robusto dos valores Decimal (capitalInicial e aporteMensalPadrao) para evitar falha no construtor new Decimal().
 
 import { defineEventHandler, readBody, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma'
@@ -10,14 +10,13 @@ const SEQUENCIAL_START = 1007 // Início da sequência de números de conta (STO
 
 /**
  * Busca o maior número de conta existente e retorna o próximo sequencial formatado.
- * Ex: Retorna 'STOCKS-1008' se o maior for 'STOCKS-1007'.
  * @param tx O objeto de transação do Prisma.
  * @returns O próximo número de conta no formato "STOCKS-XXXX".
  */
 async function getNextNumeroDaConta(tx: any): Promise<string> {
     const latestCotista = await tx.cotista.findFirst({
         orderBy: {
-            id: 'desc', // Ordena pelo ID para encontrar o mais recente
+            id: 'desc', 
         },
         select: {
             numeroDaConta: true,
@@ -27,11 +26,9 @@ async function getNextNumeroDaConta(tx: any): Promise<string> {
     let nextNumber = SEQUENCIAL_START; 
 
     if (latestCotista && latestCotista.numeroDaConta) {
-        // Expressão Regular para extrair o número do formato "STOCKS-XXXX"
         const match = latestCotista.numeroDaConta.match(/STOCKS-(\d+)/);
         if (match && match[1]) {
             const currentNumber = parseInt(match[1]);
-            // Garante que o próximo número seja o maior encontrado + 1, respeitando o SEQUENCIAL_START
             nextNumber = Math.max(currentNumber + 1, SEQUENCIAL_START);
         }
     }
@@ -44,22 +41,26 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
 
     // 1. Desestruturação e Validação Inicial dos Dados
-    // 🔑 VAR CHECK: capitalInicial e aporteMensalPadrao são esperados do frontend e são obrigatórios no Cotista.
     let { 
         cpf, nome, sobrenome, telefone, email, password, roleId, 
-        capitalInicial, aporteMensalPadrao // Campos do Cotista
+        capitalInicial, aporteMensalPadrao 
     } = body
 
-    // 🔑 VALIDAÇÃO CRÍTICA: capitalInicial e aporteMensalPadrao devem existir (mesmo que 0), 
-    // e os campos obrigatórios do User também.
-    if (!cpf || !nome || !sobrenome || !email || !password || !roleId || typeof capitalInicial === 'undefined' || typeof aporteMensalPadrao === 'undefined') {
+    // 🔑 FIX: Tratamento robusto para valores numéricos/Decimal. 
+    // Garante que o valor seja 0 se for nulo, undefined ou falhar na conversão.
+    const safeCapitalInicial = (typeof capitalInicial === 'number' && !isNaN(capitalInicial)) ? capitalInicial : 0;
+    const safeAporteMensalPadrao = (typeof aporteMensalPadrao === 'number' && !isNaN(aporteMensalPadrao)) ? aporteMensalPadrao : 0;
+
+    // 🔑 Validação: Verifica campos obrigatórios. 
+    // capitalInicial e aporteMensalPadrao não precisam ser verificados aqui, pois já foram "safed" para 0.
+    if (!cpf || !nome || !sobrenome || !email || !password || !roleId) {
         throw createError({ 
             statusCode: 400, 
-            statusMessage: 'Dados obrigatórios (CPF, Nome, Sobrenome, E-mail, Senha, Role ID, Capital Inicial, Aporte Padrão) ausentes.' 
+            statusMessage: 'Dados obrigatórios (CPF, Nome, Sobrenome, E-mail, Senha, Role ID) ausentes.' 
         })
     }
     
-    // 🔑 FIX: Sanitiza o telefone para NULL se for string vazia
+    // FIX: Sanitiza o telefone para NULL se for string vazia
     telefone = telefone && telefone.trim() !== '' ? telefone : null;
 
     // 2. Verificação de Nível de Acesso (MIN_REQUIRED_LEVEL = 1)
@@ -94,16 +95,16 @@ export default defineEventHandler(async (event) => {
         // 5. CRIAÇÃO ATÔMICA (User e Cotista)
         const [newCotista, newUser] = await prisma.$transaction(async (tx) => {
             
-            // 5a. GERAÇÃO DO NÚMERO DA CONTA SEQUENCIAL (Feito dentro da transação para consistência)
+            // 5a. GERAÇÃO DO NÚMERO DA CONTA SEQUENCIAL
             const generatedNumeroDaConta = await getNextNumeroDaConta(tx);
             
             // 5b. Criação do Registro Cotista
             const createdCotista = await tx.cotista.create({
                 data: {
-                    // 🔑 Conversão explícita para Decimal (importado do runtime/library)
-                    capitalInicial: new Decimal(capitalInicial), 
-                    aporteMensalPadrao: new Decimal(aporteMensalPadrao),
-                    numeroDaConta: generatedNumeroDaConta, // Usa o valor sequencial gerado
+                    // Usa os valores "safed" para new Decimal()
+                    capitalInicial: new Decimal(safeCapitalInicial), 
+                    aporteMensalPadrao: new Decimal(safeAporteMensalPadrao),
+                    numeroDaConta: generatedNumeroDaConta, 
                 }
             })
 
@@ -141,7 +142,7 @@ export default defineEventHandler(async (event) => {
             let field: string = 'campo';
             if (error.meta?.target.includes('cpf')) field = 'CPF';
             else if (error.meta?.target.includes('email')) field = 'E-mail';
-            else if (error.meta?.target.includes('numeroDaConta')) field = 'Número da Conta'; // Incluído o campo do Cotista
+            else if (error.meta?.target.includes('numeroDaConta')) field = 'Número da Conta'; 
 
             throw createError({ statusCode: 409, statusMessage: `${field} já cadastrado no sistema.` })
         }

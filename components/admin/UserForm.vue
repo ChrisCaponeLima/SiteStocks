@@ -1,88 +1,90 @@
-// /components/admin/UserForm.vue - V1.5 - FEATURE: Adição de campos de Cotista (capitalInicial, aporteMensalPadrao) na tipagem e no formulário de criação.
+// /components/admin/UserForm.vue - V1.6 - FIX: Implementa rolagem interna no modal para garantir que os botões de ação estejam sempre acessíveis, corrigindo problema de UI/UX em telas pequenas.
 <template>
 <div class="user-form-modal">
  <h3>{{ isEditMode ? 'Editar' : 'Adicionar' }} Usuário (ID: {{ form.id ? form.id : 'Novo' }})</h3>
  
  <form @submit.prevent="submitForm">
- <div class="form-section">
-  <h4>Dados Pessoais</h4>
-  <div class="form-group">
-  <label for="nome">Nome:</label>
-  <input type="text" id="nome" v-model="form.nome" required />
-  </div>
-  
-  <div class="form-group">
-  <label for="sobrenome">Sobrenome:</label>
-  <input type="text" id="sobrenome" v-model="form.sobrenome" required />
+ <div class="form-content-scroll">   
+  <div class="form-section">
+   <h4>Dados Pessoais</h4>
+   <div class="form-group">
+   <label for="nome">Nome:</label>
+   <input type="text" id="nome" v-model="form.nome" required />
+   </div>
+   
+   <div class="form-group">
+   <label for="sobrenome">Sobrenome:</label>
+   <input type="text" id="sobrenome" v-model="form.sobrenome" required />
+   </div>
+
+   <div class="form-group">
+   <label for="email">E-mail (Login):</label>
+   <input type="email" id="email" v-model="form.email" required :disabled="isEditMode" />
+   <small v-if="isEditMode">O e-mail não pode ser alterado no modo de edição.</small>
+   </div>
+
+   <div class="form-group">
+   <label for="cpf">CPF:</label>
+   <input type="text" id="cpf" v-model="form.cpf" required maxlength="14" /> 
+   </div>
+
+   <div class="form-group">
+   <label for="telefone">Telefone:</label>
+   <input type="text" id="telefone" v-model="form.telefone" />
+   </div>
   </div>
 
-  <div class="form-group">
-  <label for="email">E-mail (Login):</label>
-  <input type="email" id="email" v-model="form.email" required :disabled="isEditMode" />
-  <small v-if="isEditMode">O e-mail não pode ser alterado no modo de edição.</small>
+  <div class="form-section">
+   <h4>Permissões e Segurança</h4>
+   
+   <div class="form-group">
+   <label for="roleId">Nível de Acesso:</label>
+   <select id="roleId" v-model="form.roleId" required :disabled="!canChangeRole">
+    <option disabled :value="null">Selecione um nível</option>
+    <option v-for="role in availableRoles" :key="role.id" :value="role.id">
+    {{ role.name }} (Nível {{ role.level }})
+    </option>
+   </select>
+   <small v-if="!canChangeRole">Você só pode gerenciar usuários de nível inferior ao seu.</small>
+   </div>
+
+   <div class="form-group">
+   <label for="password">Senha: <span v-if="!isEditMode">*</span></label>
+   <input 
+    type="password" 
+    id="password" 
+    v-model="form.password" 
+    :required="!isEditMode" 
+   />
+   <small v-if="isEditMode">Deixe em branco para manter a senha atual.</small>
+   </div>
+   
+   <div class="form-group" v-if="isEditMode">
+   <label>Status:</label>
+   <label class="switch">
+    <input type="checkbox" v-model="form.ativo" :disabled="form.id === currentUser.id">
+    <span class="slider round"></span>
+   </label>
+   <span class="status-label">{{ form.ativo ? 'ATIVO' : 'INATIVO' }}</span>
+   <small v-if="form.id === currentUser.id">Você não pode inativar a sua própria conta.</small>
+   </div>
   </div>
 
-  <div class="form-group">
-  <label for="cpf">CPF:</label>
-  <input type="text" id="cpf" v-model="form.cpf" required maxlength="14" /> 
-    </div>
-
-  <div class="form-group">
-  <label for="telefone">Telefone:</label>
-  <input type="text" id="telefone" v-model="form.telefone" />
-  </div>
- </div>
-
- <div class="form-section">
-  <h4>Permissões e Segurança</h4>
-  
-  <div class="form-group">
-  <label for="roleId">Nível de Acesso:</label>
-  <select id="roleId" v-model="form.roleId" required :disabled="!canChangeRole">
-   <option disabled :value="null">Selecione um nível</option>
-   <option v-for="role in availableRoles" :key="role.id" :value="role.id">
-   {{ role.name }} (Nível {{ role.level }})
-   </option>
-  </select>
-  <small v-if="!canChangeRole">Você só pode gerenciar usuários de nível inferior ao seu.</small>
-  </div>
-
-  <div class="form-group">
-  <label for="password">Senha: <span v-if="!isEditMode">*</span></label>
-  <input 
-   type="password" 
-   id="password" 
-   v-model="form.password" 
-   :required="!isEditMode" 
-  />
-  <small v-if="isEditMode">Deixe em branco para manter a senha atual.</small>
-  </div>
-  
-  <div class="form-group" v-if="isEditMode">
-  <label>Status:</label>
-  <label class="switch">
-   <input type="checkbox" v-model="form.ativo" :disabled="form.id === currentUser.id">
-   <span class="slider round"></span>
-  </label>
-  <span class="status-label">{{ form.ativo ? 'ATIVO' : 'INATIVO' }}</span>
-  <small v-if="form.id === currentUser.id">Você não pode inativar a sua própria conta.</small>
-  </div>
- </div>
-
-  <div class="form-section" v-if="!isEditMode">
-  <h4>Dados Iniciais do Cotista (Obrigatório)</h4>
-  
-  <div class="form-group">
-  <label for="capitalInicial">Capital Inicial (R$):</label>
+    <div class="form-section" v-if="!isEditMode">
+   <h4>Dados Iniciais do Cotista (Obrigatório)</h4>
+   
+   <div class="form-group">
+    <label for="capitalInicial">Capital Inicial (R$):</label>
     <input type="number" id="capitalInicial" v-model.number="form.capitalInicial" required min="0" step="0.01" />
+   </div>
+
+   <div class="form-group">
+    <label for="aporteMensalPadrao">Aporte Mensal Padrão (R$):</label>
+    <input type="number" id="aporteMensalPadrao" v-model.number="form.aporteMensalPadrao" required min="0" step="0.01" />
+   </div>
   </div>
 
-  <div class="form-group">
-  <label for="aporteMensalPadrao">Aporte Mensal Padrão (R$):</label>
-    <input type="number" id="aporteMensalPadrao" v-model.number="form.aporteMensalPadrao" required min="0" step="0.01" />
-  </div>
- </div>
-  <div class="form-actions">
+  </div>  <div class="form-actions">
   <button type="submit" :disabled="isLoading">
   {{ isEditMode ? '💾 Salvar Alterações' : '➕ Criar Usuário' }}
   </button>
@@ -116,7 +118,6 @@ email: string;
 password?: string;
 roleId: number | null;
 ativo?: boolean;
-// 🔑 NOVOS CAMPOS DO COTISTA - OBRIGATÓRIOS PARA CRIAÇÃO
 capitalInicial?: number; 
 aporteMensalPadrao?: number;
 }
@@ -136,7 +137,6 @@ email: '',
 password: '',
 roleId: null,
 ativo: true,
-// 🔑 Inicializa os novos campos com 0 para garantir que sejam enviados na criação
 capitalInicial: 0, 
 aporteMensalPadrao: 0,
 };
@@ -144,8 +144,6 @@ aporteMensalPadrao: 0,
 const form = ref<UserFormData>({ ...initialForm });
 
 const isEditMode = computed(() => !!props.initialData?.id);
-// Verifica se o usuário logado tem nível suficiente para mudar a role (mesma regra do backend)
-// 🔑 VAR CHECK: As variáveis props.initialData, currentUser.value e role.level estão corretas.
 const canChangeRole = computed(() => !isEditMode.value || (currentUser.value && currentUser.value.roleLevel > props.initialData.role.level));
 
 
@@ -175,10 +173,9 @@ if (newVal) {
  password: '', // Senha sempre vazia na edição
  roleId: newVal.roleId,
  ativo: newVal.ativo, // Pega o status atual
- // 🔑 Não inicializa campos do Cotista na edição (eles não são usados)
  };
 } else {
- // Reseta o formulário para criação (usa os defaults que incluem capitalInicial e aporteMensalPadrao)
+ // Reseta o formulário para criação
  form.value = { ...initialForm };
 }
 }, { immediate: true });
@@ -196,7 +193,7 @@ isLoading.value = true;
 try {
  if (isEditMode.value) {
  // 🔑 Edição (PUT)
- // 🛑 CRITICAL: Remove os campos do Cotista do payload na edição, pois não são esperados pelo PUT.
+ // CRITICAL: Remove os campos do Cotista do payload na edição, pois não são esperados pelo PUT.
  delete payload.capitalInicial;
  delete payload.aporteMensalPadrao;
  
@@ -207,7 +204,8 @@ try {
  alert('Usuário atualizado com sucesso!');
  } else {
  // 🔑 Criação (POST)
- // 🛑 CRITICAL: Garante que os valores de Capital e Aporte são numéricos para o backend
+ // CRITICAL: Garante que os valores de Capital e Aporte são numéricos para o backend
+ // O backend (V1.5) já trata null/undefined, mas garantimos o tipo aqui.
  payload.capitalInicial = Number(payload.capitalInicial);
  payload.aporteMensalPadrao = Number(payload.aporteMensalPadrao);
  
@@ -244,15 +242,36 @@ fetchAvailableRoles();
  border-radius: 8px; 
  background: #fff; 
  max-width: 600px; 
- width: 100%; /* <--- AJUSTE APLICADO AQUI */
+ width: 100%; 
  margin: 0 auto; 
+ 
+ /* 🔑 FIX UI SCROLL: Define altura máxima e overflow para a rolagem */
+ max-height: 90vh; /* Limita a altura do modal a 90% da altura da tela */
+ display: flex;
+ flex-direction: column;
 }
+
+/* 🔑 NOVO ESTILO: Container para o conteúdo que deve rolar */
+.form-content-scroll {
+ overflow-y: auto; /* Permite rolagem vertical */
+ padding-right: 15px; /* Espaço para a barra de rolagem não sobrepor o conteúdo */
+ margin-right: -15px; /* Move a barra de rolagem para fora do padding */
+ flex-grow: 1; /* Permite que o conteúdo expanda e use o espaço restante */
+}
+
+/* Ajusta a margem do formulário para o novo layout */
+form {
+ display: flex;
+ flex-direction: column;
+ flex-grow: 1;
+}
+
 .form-section { margin-bottom: 20px; padding: 10px; border: 1px dashed #eee; border-radius: 4px; }
 h4 { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 0; }
 .form-group { margin-bottom: 15px; }
 label { display: block; margin-bottom: 5px; font-weight: bold; }
-/* 🔑 VAR CHECK: Select e Input (exceto checkbox) */
 input:not([type="checkbox"]), select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+.form-actions { margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; flex-shrink: 0; /* Impede que os botões diminuam */ }
 .form-actions button { margin-right: 10px; padding: 10px 15px; cursor: pointer; border: none; border-radius: 4px; }
 .form-actions button:first-child { background-color: #007bff; color: white; }
 .form-actions button:disabled { background-color: #ccc; cursor: not-allowed; }
