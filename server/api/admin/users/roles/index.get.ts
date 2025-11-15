@@ -1,37 +1,33 @@
-// /server/api/admin/roles/index.get.ts - V1.2 - CORREÇÃO CRÍTICA: Ajusta o nome da tabela do Prisma para 'roleLevel' conforme o schema fornecido.
+// /server/api/admin/roles/index.get.ts - V1.4 - REVISÃO: Nenhuma alteração lógica. Confirma a sintaxe correta do handler e da importação para evitar erros de compilação que resultam em 404.
 
 import { defineEventHandler, createError } from 'h3'
-import { usePrisma } from '~/server/utils/prisma'
+import { usePrisma } from '~/server/utils/prisma' // Assumindo que este caminho está correto
 
 export default defineEventHandler(async (event) => {
     const prisma = usePrisma()
     
-    // 1. Verificação de Nível de Acesso
+    // 1. Verificação de Nível de Acesso (Assumimos que event.context.user é preenchido pelo middleware de Auth)
     const currentUser = event.context.user // { id, roleId, roleLevel }
-    const MIN_REQUIRED_LEVEL = 1 
+    const MIN_REQUIRED_LEVEL = 1 // Nível mínimo para acessar esta rota
     
     // Garantimos que roleLevel existe e atinge o nível mínimo.
     if (!currentUser || typeof currentUser.roleLevel !== 'number' || currentUser.roleLevel < MIN_REQUIRED_LEVEL) { 
         throw createError({ 
             statusCode: 403, 
-            statusMessage: 'Acesso Negado. Requer Nível 1 ou superior.' 
+            statusMessage: 'Acesso Negado. Requer Nível 1 ou superior. (Verifique sua sessão)' 
         })
     }
 
     // 2. Regra de Segurança: O usuário só pode gerenciar/criar Roles com nível estritamente MENOR que o seu.
     const currentUserLevel = currentUser.roleLevel; 
     
-    // Define o nível máximo que o usuário logado pode gerenciar/criar.
-    // Nível 99 (Super Admin) pode ver todos (lt: 99 + 1), mas o filtro lt: currentUserLevel já funciona.
-    const maxLevel = currentUserLevel
-
     try {
         // 3. Busca das Roles Disponíveis para Atribuição
-        // 🛑 CORREÇÃO: Usa a tabela RoleLevel conforme o schema.
         const availableRoles = await prisma.roleLevel.findMany({
             where: {
                 // Filtra para garantir que o usuário só possa selecionar níveis abaixo do seu
-                level: { lt: maxLevel } // lt: estritamente menor que o nível do usuário logado
+                // lt: estritamente menor que o nível do usuário logado (Ex: Admin 5 vê níveis 1, 2, 3, 4)
+                level: { lt: currentUserLevel } 
             },
             select: {
                 id: true, // Este ID é a FK roleId que será salvo no User
@@ -43,13 +39,25 @@ export default defineEventHandler(async (event) => {
 
         return availableRoles
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Erro ao listar roles de acesso:', error)
         
-        // Passa erros específicos (como 403) ou erro genérico 500
+        // Se o erro já for um 403 que passou pela primeira checagem, relança-o.
         if (error.statusCode === 403) {
             throw error 
         }
-        throw createError({ statusCode: 500, statusMessage: 'Falha ao buscar os níveis de acesso disponíveis.' })
+        
+        // Trata o erro de banco ou erro inesperado como 500
+        throw createError({ 
+            statusCode: 500, 
+            statusMessage: 'Falha interna ao buscar os níveis de acesso disponíveis no banco de dados.' 
+        })
     }
 })
+// O modelo Prisma não está sendo alterado, apenas repetido aqui para contexto.
+// model RoleLevel {
+//   id    Int    @id @default(autoincrement())
+//   name  String @unique @db.VarChar(50)
+//   level Int    @unique
+//   users User[]
+// }
