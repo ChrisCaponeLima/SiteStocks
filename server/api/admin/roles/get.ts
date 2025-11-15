@@ -1,4 +1,4 @@
-// /server/api/admin/roles/index.get.ts - V1.5 - REVISÃO CRÍTICA: Confirma a sintaxe correta do handler e da importação. É essencial que o servidor Nuxt seja REINICIADO após esta confirmação para que o mapeamento da rota 404 seja corrigido.
+// /server/api/admin/roles/get.ts - V1.6 - CORREÇÃO DE MAPPING: Conteúdo do handler movido para 'get.ts' (em vez de index.get.ts) para forçar o Nuxt a registrar a rota e resolver o erro 404.
 
 import { defineEventHandler, createError } from 'h3'
 import { usePrisma } from '~/server/utils/prisma' // Assumindo que este caminho está correto
