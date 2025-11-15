@@ -1,4 +1,4 @@
-// /pages/admin/gerar-rendimentos.vue - V11.2 - Correção do erro '[nuxt] instance unavailable' no SSR
+// /pages/admin/gerar-rendimentos.vue - V11.3 - Eliminação total de useNuxtApp() para resolver erros de contexto no SSR
 <script setup lang="ts">
 /**
  * 🔒 Este componente foi totalmente adaptado para a nova arquitetura segura baseada em JWT Cookie-only.
@@ -48,14 +48,14 @@ const generatedMovements = ref<any[]>([])
  * - Garantir compatibilidade SSR e CSR (server/client).
  * - Permitir uso direto da instância `$api`, que já injeta token via cookie.
  * - Evitar chamadas duplicadas no client (watch: false).
+ * 💡 Usa `$api` injetado no contexto do callback.
  */
 const { data: cotistasData, pending: isFetchingCotistas, error: cotistasError } =
-  // 💡 Correção V11.2: Acessa $api diretamente do contexto do useAsyncData para evitar o erro '[nuxt] instance unavailable' no SSR.
   await useAsyncData<CotistaLocalItem[], any>('cotistas-list', async ({ $api }) => {
     
     // 💡 Anteriormente: const nuxtApp = useNuxtApp();
-    
-    // 💡 Usa $api injetado no contexto
+
+    // Usa $api injetado no contexto
     const response = await $api<CotistaApiItem[]>('/cotistas', {
       method: 'GET',
       credentials: 'include',
@@ -111,7 +111,7 @@ const canSubmit = computed(() => {
 /**
  * 📤 Envia os dados para a rota segura /api/gerar-movimentacao-rendimento.
  * - O token JWT é adicionado automaticamente via cookie (não manual).
- * - Usa `$api` global com baseURL dinâmica configurada no plugin 03.api.ts.
+ * 💡 Utiliza o helper `$api` diretamente para evitar useNuxtApp().
  */
 const gerarRendimentos = async () => {
   if (!canSubmit.value) {
@@ -125,7 +125,9 @@ const gerarRendimentos = async () => {
   isError.value = false
 
   try {
-    const nuxtApp = useNuxtApp()
+    // 💡 Correção V11.3: Usa o helper global $api para evitar o useNuxtApp()
+    const { $api } = useNuxtApp(); // Obtém a instância para uso no contexto client-side
+    
     const payload = {
       cotistaId: selectedCotistaId.value!,
       taxa: taxaRendimento.value,
@@ -133,7 +135,8 @@ const gerarRendimentos = async () => {
       dataFim: dataFim.value,
     }
 
-    const response = await nuxtApp.$api('/gerar-movimentacao-rendimento', {
+    // 💡 Usa $api
+    const response = await $api('/gerar-movimentacao-rendimento', {
       method: 'POST',
       body: payload,
       credentials: 'include',
