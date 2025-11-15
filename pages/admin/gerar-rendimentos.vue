@@ -1,4 +1,4 @@
-// /pages/admin/gerar-rendimentos.vue - V11.1 - Correção da População do Select de Cotistas (Verificação robusta do array de resposta da API)
+// /pages/admin/gerar-rendimentos.vue - V11.2 - Correção do erro '[nuxt] instance unavailable' no SSR
 <script setup lang="ts">
 /**
  * 🔒 Este componente foi totalmente adaptado para a nova arquitetura segura baseada em JWT Cookie-only.
@@ -50,19 +50,20 @@ const generatedMovements = ref<any[]>([])
  * - Evitar chamadas duplicadas no client (watch: false).
  */
 const { data: cotistasData, pending: isFetchingCotistas, error: cotistasError } =
-  await useAsyncData<CotistaLocalItem[]>('cotistas-list', async () => {
-    const nuxtApp = useNuxtApp()
+  // 💡 Correção V11.2: Acessa $api diretamente do contexto do useAsyncData para evitar o erro '[nuxt] instance unavailable' no SSR.
+  await useAsyncData<CotistaLocalItem[], any>('cotistas-list', async ({ $api }) => {
     
-    // 💡 Tipagem da resposta da API
-    const response = await nuxtApp.$api<CotistaApiItem[]>('/cotistas', {
+    // 💡 Anteriormente: const nuxtApp = useNuxtApp();
+    
+    // 💡 Usa $api injetado no contexto
+    const response = await $api<CotistaApiItem[]>('/cotistas', {
       method: 'GET',
-      credentials: 'include', // 🧷 Garante envio do cookie JWT
+      credentials: 'include',
     })
 
-    // 💡 Correção: Verificação robusta para garantir que a resposta é um array válido
+    // Verificação robusta para garantir que a resposta é um array válido
     if (!Array.isArray(response)) {
       console.error('API /cotistas retornou um formato inválido:', response)
-      // Força um erro para que cotistasError seja acionado
       throw new Error("Resposta da API de cotistas não é uma lista válida.");
     }
     
